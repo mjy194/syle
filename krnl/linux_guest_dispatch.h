@@ -27,9 +27,11 @@ struct lgd_config {
 };
 #include "linux_debug_disabled.h"
 #include "linux_pic_mask.h"
+#include "linux_rtc.h"
 struct lgd_context {
  struct ldd_state debug_disabled;
  struct lpic_state pic;
+ struct lrtc_state rtc;
  struct lgd_config config;
  struct lpit2 pit;uint64_t ticks,staged_tick;bool clock_staged;
  struct lpa_state activation;

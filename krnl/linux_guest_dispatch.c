@@ -124,6 +124,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  case 16:ok=lpit2_rdtsc(&d->pit,s->native.gpr,rip,0,reason,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite)==LPIT_COMMITTED;break;
  case 31:case 32:ok=msr(d,s,reason,rip,(unsigned)len);break;
  case 30:
+  if((q>>16)==0x70||(q>>16)==0x71){ok=lrtc_io(&d->rtc,s->native.gpr,rip,0,reason,q,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite);break;}
   if((q>>16)==0x20||(q>>16)==0x21||(q>>16)==0xa0||(q>>16)==0xa1){
    uint64_t flags;ok=rd(s,0x6820,&flags)&&lpic_io_flags(&d->pic,s->native.gpr,rip,0,reason,q,(unsigned)len,flags,s->hop.context,s->hop.vmwrite);break;
   }
@@ -145,7 +146,7 @@ bool lgd_reset(void*p){
  if(d->config.irq_adapter&&(d->config.irq_adapter->reserved||d->config.irq_adapter->quarantined))return false;
  struct linux_uart_runtime uart;
  if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
- lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
+ lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
  d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){

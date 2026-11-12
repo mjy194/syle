@@ -62,6 +62,7 @@ sh krnl/tests/linux_debug_disabled_dispatch.sh
 sh krnl/tests/linux_pic_mask_dispatch.sh
 sh krnl/tests/linux_pic_init_dispatch.sh
 sh krnl/tests/linux_pause_dispatch.sh
+sh krnl/tests/linux_rtc_dispatch.sh
 # Native harness uses CPL3 refusal/fixup and user FX state only. Do not apply
 # sanitizer instrumentation across the intentional FX-state exchange.
 "$CC" -std=c11 -Ikrnl -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -fno-pie -no-pie krnl/host-tests/linux_vcpu_native.c krnl/host-tests/linux_vcpu_native_fx.S krnl/linux_vcpu_native.c krnl/linux_vcpu_native.S krnl/linux_vcpu_state.c -o "$tmp/native"
