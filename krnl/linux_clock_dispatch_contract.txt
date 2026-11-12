@@ -1,0 +1,33 @@
+Unified deterministic logical device clock; not a wall-clock timing model.
+Per CREATE starts tick0. Exactly one tick is committed for each successfully
+handled VM exit, including CPUID, UART, guest PF, PIT, RDTSC, and timer yield.
+No extra progress for before/after-entry, host SEND/RECV, or failed transactions.
+Exit N hard-budget termination remains unchanged. No guest-instruction count or
+elapsed host time is inferred. A failed exit may already have partial VMCS/device
+changes; dispatcher failure is sticky and forbids all subsequent entry.
+
+While dispatch owns busy, next_tick=tick+1 is staged. All time-aware device
+transactions see that candidate time; only successful handling commits tick.
+Overflow (>UINT64_MAX/1000), staged reentry or backward PIT time stops. PIT uses
+1193182Hz ticks. RDTSC and APIC now use1000*tick (virtual1193182000Hz). APIC timer
+retains its explicitly synthetic1024 virtual-TSC-unit quantum, not physical APIC
+frequency. The same source has different explicit units, never raw host RDTSC.
+APIC config is accepted only with now=lgd_apic_now and clock_ctx=this dispatcher.
+Native constructor supplies exactly this callback before model init; source time
+is zero before CREATE. Old external/raw-RDTSC service source is rejected.
+
+PIT ports61/42/43 byte immediate or DX dispatch to reviewed mode0 transaction;
+all other I/O keeps prior UART handling/fail-stop. RDTSC exit16 length2 emits
+zero-extended EAX/EDX. It is also a proven guest instruction exit for pending PF
+and external IRQ receipt, with all existing actual-entry/vectoring restrictions.
+Timer/unknown/entry-failure conditions remain quarantined, not generalized.
+
+Host sequence test follows fixed vmlinux IN61/OUT61/B0/FF/FF/two IN42/RDTSC and
+observes count-high transition with the same TSC. Test budget explicitly4096
+for this deterministic loop; production budget unchanged. This is not a real
+Linux calibration result, shell success or timer-frequency acceptance.
+
+Build: add linux_pit2 to every MG_MODS/dispatcher link; new MP_MODS includes it.
+Merge native-source-clock delta into current service/startup; do not replace
+newer control diagnostics. Default policy remains APIC-hidden, now gains bounded
+PIT+RDTSC handling using the same deterministic clock.

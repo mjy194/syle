@@ -21,7 +21,8 @@ after lgm_prepare but before enable, with fresh resume/cr2/exits/last_reason.
 It retains RAM on failure, stage9 distinguishes the hook without renumbering
 existing stages1..8. The baseline NULL hook retains prior behavior.
 
-Clock is LFENCE/RDTSC synthetic ticks only, not calibrated LAPIC time and not a
-claim Linux timer initialization works. No changes to CPUID policy before the
-actual per-entry gate. Service init intent does not constitute verification.
-Control's latest diagnostic context/host files are unmodified dependencies.
+Clock is dispatcher-owned logical PIT tick, exposed as 1000*tick virtual TSC.
+Native startup does not sample host RDTSC. lps_init requires exactly
+lgd_apic_now and &context.dispatch; raw/external clock callbacks are rejected.
+APIC uses the same virtual TSC units as RDTSC. This remains deterministic
+synthetic timing, not physical-time calibration or Linux acceptance.

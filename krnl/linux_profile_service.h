@@ -10,5 +10,6 @@ struct lps_context {
 };
 /* Singleton BSP service, stable zero object for kernel lifetime. Domain IDs
  * never repeat within that lifetime. Not safe to reset by memset after install. */
+/* Clock arguments must be &context.dispatch and lgd_apic_now. */
 bool lps_init(struct lps_context*,const struct lgd_config*,void*,bool(*)(void*,uint64_t*),struct lgm_service_ops*);
 #endif

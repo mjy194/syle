@@ -8,6 +8,7 @@
 #include "linux_apic_dispatch.h"
 #include "linux_profile_activation.h"
 #include "linux_nonpresent_pf.h"
+#include "linux_pit2.h"
 struct lgs_session;struct lgm_service_ops;struct lgs_entry_result;
 struct lgd_config {
  struct lvp_cpu_features cpu;
@@ -26,6 +27,7 @@ struct lgd_config {
 };
 struct lgd_context {
  struct lgd_config config;
+ struct lpit2 pit;uint64_t ticks,staged_tick;bool clock_staged;
  struct lpa_state activation;
  struct lpfg_state pf;
  struct lnp_state demand_pf;
@@ -42,6 +44,8 @@ struct lgd_context {
  * access control and calls reset before every CREATE, never on live resources.
  * Reset retains immutable config; clears all PF/highPF/UART/CPU runtime state.
  * No VM, host MSR/port access, printing, or allocator. */
+/* APIC synthetic clock is the same virtual TSC=1000*PITtick. */
+bool lgd_apic_now(void*,uint64_t*);
 bool lgd_init(struct lgd_context*,const struct lgd_config*,struct lgm_service_ops*);
 bool lgd_reset(void*);
 bool lgd_before_entry(void*,struct lgs_session*);

@@ -23,11 +23,12 @@ int main(void){
  memset(ram+LAT_GPA,0,LAR_SIZE);put(ram+0x90070,0,8);
  s.prepared=s.enabled=s.host.ready=s.host.active=false;
  s.memory.owner.writeback=wb;s.memory.owner.release=release;
- struct lpp_context *p=calloc(1,sizeof *p);assert(p&&lpp_init(p,987,NULL,now));
+ struct lgd_context d={0};
+ struct lpp_context *p=calloc(1,sizeof *p);assert(p&&lpp_init(p,987,&d,lgd_apic_now));
  struct lgd_config config={.cpu=host,.apic=p->config,.irq_delivery_enabled=true,.irq_platform_ready=true,
  .max_basic=1,.vendor_b=0x756e6547,.vendor_c=0x6c65746e,.vendor_d=0x49656e69,.max_extended=0x80000008,
  .max_exits=100,.irq_ctx=&p->irq,.sync_irq=gia_irq4};
- struct lgd_context d={0};struct lgm_service_ops ops;assert(lgd_init(&d,&config,&ops)&&lgd_reset(&d));
+ struct lgm_service_ops ops;assert(lgd_init(&d,&config,&ops)&&lgd_reset(&d));
  assert(lgd_send(&d,1)==-16&&lpp_prepare_guest(p,&s)&&writebacks==2&&!release_calls&&!vmwrites);
  assert(p->firmware==LAI_INSTALLED&&p->session==&s&&p->owner.map==s.memory.owner.map);
  assert(p->irq.apic==&p->apic&&p->irq.io==&p->io&&p->transactions.model==&p->apic&&p->config.irq==&p->irq);

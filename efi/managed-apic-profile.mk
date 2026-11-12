@@ -3,7 +3,7 @@
 # Never a dependency of all/default; never executes a VM. Private object prefix
 # prevents mixing previously compiled baseline startup with experimental flags.
 MP_DEFS = $(MG_DEFS) -DMG_EXPERIMENTAL_APIC
-MP_MODS = $(sort $(MG_MODS) linux_profile_service linux_profile_prepare linux_profile_activation linux_profile_gate linux_cpu_profile linux_acpi_reduced_install linux_acpi_reduced linux_acpi_topology linux_acpi_install linux_apic_dispatch linux_apic_mmio linux_ioapic_mmio linux_apic_msr linux_mmio_memory guest_mmio_mov guest_apic lapic_timer linux_guest_irq_adapter linux_guest_irq_glue)
+MP_MODS = $(sort $(MG_MODS) linux_pit2 linux_nonpresent_pf linux_profile_service linux_profile_prepare linux_profile_activation linux_profile_gate linux_cpu_profile linux_acpi_reduced_install linux_acpi_reduced linux_acpi_topology linux_acpi_install linux_apic_dispatch linux_apic_mmio linux_ioapic_mmio linux_apic_msr linux_mmio_memory guest_mmio_mov guest_apic lapic_timer linux_guest_irq_adapter linux_guest_irq_glue)
 MP_OBJS = $(addprefix build/mp-,$(addsuffix .o,$(MP_MODS))) build/mp-native-asm.o build/mg-inputs.o build/mp-main.o build/mp-exceptions-asm.o
 build/mp-%.o: ../krnl/%.c | build
 	$(CC) $(KFLAGS) $(MP_DEFS) -c $< -o $@

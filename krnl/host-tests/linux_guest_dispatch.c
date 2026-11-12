@@ -11,7 +11,7 @@ static struct lgd_context dispatch;
 static struct mock mock;
 static bool rd(void*p,uint32_t f,uint64_t*v){struct mock*m=p;assert(f<0x7000);if(++m->reads==m->failread)return false;*v=m->f[f];return true;}
 static bool wr(void*p,uint32_t f,uint64_t v){struct mock*m=p;assert(f<0x7000);m->f[f]=v;return ++m->writes!=m->failwrite;}
-static bool clock_now(void*p,uint64_t*out){(void)p;*out=0;return true;}
+static bool foreign_clock(void*p,uint64_t*t){(void)p;*t=0;return true;}
 static bool inv(void*p,uint64_t e){struct mock*m=p;(void)e;m->invs++;return !m->invfail;}
 static bool irq(void*p,unsigned n,bool level){struct mock*m=p;assert(n==4);(void)level;if(m->reenter){assert(!lgd_reset(&dispatch));assert(!lgd_dispatch(&dispatch,&session,52));assert(lgd_recv(&dispatch)==-16);}return !m->irqfail;}
 static void setup(bool fixed){
@@ -54,7 +54,8 @@ int main(void){
  struct lgd_context fresh={0};struct lgm_service_ops out={0};assert(!lgd_init(&fresh,&enable,&out)&&!fresh.configured&&!out.ctx);
  setup(false);struct guest_apic ga;struct ioapic gio;struct gia gdomain;struct lams_state gtx={0};struct lio_state giox={0};
  guest_apic_init_mode(&ga,0,false);ioapic_init(&gio,gia_enqueue,&gdomain);assert(gia_init(&gdomain,&ga,&gio,99,true));assert(lams_init(&gtx,&ga,99,&gdomain,gia_notify));assert(lio_init(&giox,&gdomain));
- enable=dispatch.config;enable.apic=(struct lad_config){.transactions=&gtx,.irq=&gdomain,.now=clock_now,.ioapic=&giox};enable.irq_delivery_enabled=enable.irq_platform_ready=true;enable.irq_adapter=NULL;enable.sync_irq=gia_irq4;enable.irq_ctx=&gdomain;fresh=(struct lgd_context){0};out=(struct lgm_service_ops){0};assert(lgd_init(&fresh,&enable,&out)&&fresh.configured&&!fresh.activation.active);
+ enable=dispatch.config;enable.apic=(struct lad_config){.transactions=&gtx,.irq=&gdomain,.now=lgd_apic_now,.clock_ctx=&fresh,.ioapic=&giox};enable.irq_delivery_enabled=enable.irq_platform_ready=true;enable.irq_adapter=NULL;enable.sync_irq=gia_irq4;enable.irq_ctx=&gdomain;fresh=(struct lgd_context){0};out=(struct lgm_service_ops){0};enable.apic.now=foreign_clock;assert(!lgd_init(&fresh,&enable,&out));enable.apic.now=lgd_apic_now;
+ assert(lgd_init(&fresh,&enable,&out)&&fresh.configured&&!fresh.activation.active);
  assert(lgd_send(&fresh,1)==-16&&lgd_recv(&fresh)==-16);
  assert(!lgd_before_entry(&fresh,&session)&&fresh.failed&&fresh.activation.failed&&!fresh.activation.active);
  assert(!lgd_before_entry(&fresh,&session));
@@ -104,4 +105,5 @@ int main(void){
  dispatch.microcode.loaded=true;
  assert(lgd_reset(&dispatch)&&!dispatch.microcode.loaded&&!dispatch.failed&&!dispatch.pf.count&&dispatch.high==LHP_UNUSED&&!dispatch.exits);
  puts("linux_guest_dispatch: CPU/CR/MSR/UART/PF/highPF, failures/budgets/reset PASS (host only)");
+ return 0;
 }

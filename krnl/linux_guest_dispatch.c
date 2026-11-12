@@ -7,6 +7,11 @@
 #include "linux_efer_commit.h"
 #include "linux_msr_bank.h"
 #include "linux_guest_irq_glue.h"
+bool lgd_apic_now(void*p,uint64_t*out){
+ struct lgd_context*d=p;if(!d||!out||d->failed||d->ticks>UINT64_MAX/1000||
+ (d->clock_staged&&(!d->busy||d->staged_tick!=d->ticks+1||d->staged_tick>UINT64_MAX/1000)))return false;
+ *out=(d->clock_staged?d->staged_tick:d->ticks)*1000;return true;
+}
 static bool canonical(uint64_t x){return (x>>47)==0||(x>>47)==0x1ffff;}
 static bool rd(struct lgs_session*s,uint32_t f,uint64_t*v){return s->platform.read_field(s->platform.ctx,f,v);}
 static bool wr(struct lgs_session*s,uint32_t f,uint64_t v){return s->hop.vmwrite(s->hop.context,f,v);}
@@ -83,7 +88,8 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  d->session=s;d->exits++;
  /* The final allowed observed exit is terminal: no event preparation,
   * emulation or true return that could authorize entry N+1. */
- if(d->exits==d->config.max_exits)goto done;
+ if(d->exits==d->config.max_exits||d->ticks>=UINT64_MAX/1000||d->clock_staged)goto done;
+ d->staged_tick=d->ticks+1;d->clock_staged=true;
  uint64_t reason,rip,q,len,cs,vector,event;
  if(!rd(s,0x4402,&reason)||reason!=supplied||reason>UINT16_MAX||!rd(s,0x681e,&rip)||
     !canonical(rip)||!rd(s,0x6400,&q)||!rd(s,0x440c,&len)||!rd(s,0x0802,&cs)||(cs&3)||
@@ -106,11 +112,18 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
   ok=lcp_apply(d->activation.kind,&d->config.cpu,s->native.gpr,rip,0,reason,(unsigned)len,s->hop.context,s->hop.vmwrite);
   if(ok&&leaf==1)d->microcode.loaded=true;
   break;}
+ case 16:ok=lpit2_rdtsc(&d->pit,s->native.gpr,rip,0,reason,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite)==LPIT_COMMITTED;break;
  case 31:case 32:ok=msr(d,s,reason,rip,(unsigned)len);break;
- case 30:ok=lurt_guest_io(&d->uart,s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite)>=0;break;
+ case 30:
+  if((q>>16)==0x61||(q>>16)==0x42||(q>>16)==0x43){
+   ok=lpit2_io(&d->pit,s->native.gpr,rip,0,reason,q,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite)==LPIT_COMMITTED;break;
+  }
+  ok=lurt_guest_io(&d->uart,s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite)>=0;break;
  default:break;
  }
 done:
+ if(ok&&d->clock_staged)d->ticks=d->staged_tick;
+ d->clock_staged=false;
  if(!ok){d->failed=true;d->activation.failed=true;}
  d->busy=false;return ok;
 }
@@ -120,7 +133,7 @@ bool lgd_reset(void*p){
  if(d->config.irq_adapter&&(d->config.irq_adapter->reserved||d->config.irq_adapter->quarantined))return false;
  struct linux_uart_runtime uart;
  if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
- d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
+ d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
  d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){
@@ -138,7 +151,7 @@ bool lgd_init(struct lgd_context*d,const struct lgd_config*c,struct lgm_service_
     !lcpu_host_valid(c->max_basic,c->vendor_b,c->vendor_c,c->vendor_d,c->max_extended,&c->cpu))return false;
  struct lvp_cpuid_result cp;
  bool guest_apic=c->apic.transactions!=NULL;
- if(guest_apic&&(!lad_valid(&c->apic)||c->irq_adapter||!c->irq_delivery_enabled||!c->irq_platform_ready||
+ if(guest_apic&&(c->apic.now!=lgd_apic_now||c->apic.clock_ctx!=d||!lad_valid(&c->apic)||c->irq_adapter||!c->irq_delivery_enabled||!c->irq_platform_ready||
     c->sync_irq!=gia_irq4||c->irq_ctx!=c->apic.irq))return false;
  if(!guest_apic&&(c->apic.irq||c->apic.now))return false;
  if(c->irq_delivery_enabled&&!guest_apic&&((!c->irq_adapter||!c->irq_adapter->enabled)||!c->irq_platform_ready||

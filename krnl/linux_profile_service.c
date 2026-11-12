@@ -25,7 +25,7 @@ static bool after(void*ctx,struct lgs_session*s,const struct lgs_entry_result*r)
 static int send(void*ctx,uint8_t b){struct lps_context*p=ctx;return p&&!p->busy&&!p->failed?lgd_send(&p->dispatch,b):-16;}
 static int recv(void*ctx){struct lps_context*p=ctx;return p&&!p->busy&&!p->failed?lgd_recv(&p->dispatch):-16;}
 bool lps_init(struct lps_context*p,const struct lgd_config*c,void*x,bool(*now)(void*,uint64_t*),struct lgm_service_ops*out){
- if(!p||!c||!out||!now||p->configured||p->busy||p->generation)return false;
+ if(!p||!c||!out||(now!=lgd_apic_now||x!=&p->dispatch)||p->configured||p->busy||p->generation)return false;
  p->base=*c;p->clock_ctx=x;p->now=now;p->configured=true;
  if(!reset(p))return false;
  *out=(struct lgm_service_ops){.ctx=p,.reset=reset,.dispatch=dispatch,.send=send,.recv=recv,.before_entry=before,.after_entry=after,.prepare_guest=prepare};return true;

@@ -1,0 +1,33 @@
+Pure bounded PIT2 mode0 model/transaction candidate. Not dispatcher/runtime wired.
+Fixed vmlinux disassembly at ffffffff81015404: immediate IN61/OUT61, control43=b0,
+low/high OUT42=ff, paired live IN42, interspersed RDTSC ffffffff81014e90. These
+addresses are evidence only, never runtime whitelists. Immediate I/O has VMX
+qualification bit6 and length2, DX forms bit6=0 length1; byte scalar CPL0 only.
+String/REP/width/reserved qualifications and all other ports/control modes reject.
+
+Time input unit is one tick of exactly1193182Hz. RDTSC transaction returns
+1000*tick => virtual1193182000Hz, not physical CPU frequency. Both callers must
+share one monotonic per-guest source and reset lifetime. tick>UINT64_MAX/1000
+or backward time rejects. Runtime advancement rules are NOT chosen/installed in
+this batch; no claim TSC calibration passed. Existing APIC source is raw host
+cycles: it must be replaced by a coherent conversion from this same virtual
+clock or experimental APIC must remain disabled in a future PIT-enabled runtime.
+
+Channel2 binary mode0 only: 0xb0 command resets read/write byte phases and drives
+OUT low; first count byte inhibits counting and OUT low; second schedules count
+load on next PIT tick. Zero reload is65536. Load consumes one tick regardless of
+gate, then gate high permits decrement. Gate low pauses count without clearing
+OUT; raising it continues, does not retrigger. Terminal count sets OUT high;
+counter continues wrapping modulo65536 while OUT remains high. Port61 bit0 gate,
+bit1 speaker-enable latch (no audio), bit5 read-only OUT. Writes may carry bit5
+which is ignored; unsupported bits2/3/4/6/7 reject. Bit4 refresh/parity/NMI and
+channels0/1 are not emulated. Live low/high reads sample their own access times,
+not an invented atomic latch. Latch/readback/mode2/3/BCD commands are rejected.
+Reads while waiting for the complete count write reject; reset read-before-
+programming is supported only for61, count reads before programming reject.
+
+lpit2_access validates/stages and leaves model/output unchanged on reject.
+I/O and RDTSC wrappers clone time/device state, commit RIP first then software
+model/GPRs. VMWRITE failure marks failed and requires noresume; no rollback claim
+for VMCS. IN AL preserves upper RAX; RDTSC EAX/EDX zero-extends32 bits. No host
+I/O/MSR/TSC instructions in model; no interrupt injection or VM runs.

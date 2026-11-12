@@ -6,8 +6,6 @@
 #ifdef MG_EXPERIMENTAL_APIC
 #include "linux_profile_service.h"
 static struct lps_context profile;
-static bool synthetic_time(void*x,uint64_t*t){(void)x;uint32_t a,d;
- __asm__ volatile("lfence;rdtsc":"=a"(a),"=d"(d)::"memory");*t=((uint64_t)d<<32)|a;return true;}
 #else
 static struct lgd_context dispatcher;
 #endif
@@ -32,7 +30,7 @@ bool linux_guest_startup_install(void) {
  cpu(0x80000001,&a,&b,&x,&c.cpu.extended_edx);
  cpu(0x80000008,&a,&b,&x,&d);c.cpu.physical_bits=a&255;
 #ifdef MG_EXPERIMENTAL_APIC
- return lps_init(&profile,&c,0,synthetic_time,&service)&&linux_guest_manager_install(&service);
+ return lps_init(&profile,&c,&profile.dispatch,lgd_apic_now,&service)&&linux_guest_manager_install(&service);
 #else
  return lgd_init(&dispatcher,&c,&service)&&linux_guest_manager_install(&service);
 #endif

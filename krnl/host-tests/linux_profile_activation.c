@@ -8,11 +8,12 @@ static bool inv_live(void*c,uint64_t value){(void)c;(void)value;return true;}
 int main(void){
  gate_regression();ram=calloc(1,LGM_RAM_SIZE);tables=calloc(LGM_TABLE_COUNT,4096);assert(ram&&tables);setup();
  s.hop.vmwrite=s.host.owner.vmwrite=write_live;s.hop.invept=inv_live;
+ struct lgd_context d={0};cfg.now=lgd_apic_now;cfg.clock_ctx=&d;apic.timer.last_now=0;
  struct lgd_config conf={.cpu=host,.apic=cfg,.irq_delivery_enabled=true,.irq_platform_ready=true,
  .max_basic=1,.vendor_b=0x756e6547,.vendor_c=0x6c65746e,.vendor_d=0x49656e69,.max_extended=0x80000008,
  .max_exits=100,.irq_ctx=&gia,.sync_irq=gia_irq4};
- struct lgd_context d={0};struct lgm_service_ops ops;
- struct lgd_context ungated={0};assert(lgd_init(&ungated,&conf,&ops));
+ struct lgm_service_ops ops;
+ struct lgd_context ungated={0};struct lgd_config unconf=conf;unconf.apic.clock_ctx=&ungated;assert(lgd_init(&ungated,&unconf,&ops));
  s.native.gpr[0]=1;f[0x4402]=10;f[0x440c]=2;
  assert(!lgd_dispatch(&ungated,&s,10)&&ungated.failed&&!ungated.activation.active);
  /* Reset the fixture GPR/VMCS evidence before first-entry verification. */
