@@ -1,0 +1,49 @@
+IRQ glue integration v1 (host-only, default disabled)
+
+Dependencies: reviewed paired session hooks v1 (archive SHA256
+ d1858035980468872034d48ec2d49cd3de31d146397c82a19d784fe29f2d55d5),
+linux_external_irq transaction helper, linux_irq_adapter v2, and LAPIC/IOAPIC
+APIs from startup_guest f1c89ba. Recompile all structs, do not mix old headers.
+
+Service hooks are paired. Before is after timer programming and before lvs_run.
+After is after verified host-safe restoration and before session exit filtering.
+Fields-invalid/GUEST_CAPTURE_FAILED is UNKNOWN, never no-entry. Host dirty is
+fatal and cannot call ordinary after. Before/after are exclusive and nonreentrant;
+UART send/recv, reset and dispatch reject while an entry is in flight.
+
+Only BAD_STATE/CAPTURE_FAILED/ENTRY_FAILED follow no-guest-instruction paths
+in lvs_run; native enter(false) must retain that guarantee. Explicit VM-entry
+failure exit 0x80000021/22 permits cancel, not successful guest execution.
+Unknown/vectoring/timer/exception with an injected IRQ quarantines reservation.
+Only supported instruction exits provide delivery receipt. Clear metadata first,
+then transfer reserved IRR to ISR. No replay after clear/account failure.
+
+After may reconcile receipt at the last budgeted exit; dispatcher then counts
+exit N and fails closed, so there is no N+1 entry. Before checks exhausted budget.
+No event staging is permitted after a failure. Failed before keeps reservations.
+
+STOP is NOT domain destruction. Reset refuses adapter reserved/quarantined state.
+Following full VMCS/guest/device teardown, the owner may rebuild fresh LAPIC,
+IOAPIC and adapter and only then reset dispatcher for CREATE. Never call lei_cancel
+against a noncurrent VMCS or after VMXOFF. This implementation does not perform
+post-destroy cleanup by guessing delivery. Old reservation metadata remains for
+inspection until the entire domain is retired.
+
+IRQ delivery is disabled by default. Enabling requires irq_delivery_enabled,
+irq_platform_ready, enabled adapter, AND guest-visible APIC and x2APIC CPUID bits.
+Current published CPU profile hides both: init rejects enabled IRQ. The host-only
+fixture is not evidence that Linux can receive interrupts. Still needed:
+- coherent guest APIC_BASE and supported x2APIC accesses, CPU feature policy;
+- firmware and interrupt-controller enumeration/routing matching the devices;
+- guest-programmed IRQ4 level/fixed/destination-zero route and supported sources;
+- MMIO accesses routed through lia_ioapic_mmio, all other LAPIC mutation guarded;
+- routing-specific Linux execution/acceptance tests in the authorized VM thread.
+Production glue NEVER overwrites guest routing or force-enables APIC. UART sink
+success means ownership of the logical level, not guest delivery. No implicit
+UART time passage. No interrupt-window control programming; a blocked candidate
+is deferred to the next bounded entry opportunity.
+
+Tests: tests/linux_irq_glue.sh (fault adapter fixture + actual LAPIC/IOAPIC model),
+tests/linux_guest_dispatch.sh (paired hooks, failure, budget, hidden-APIC gate).
+Use DEVICE_API_DIR and SESSION_API_DIR for the verified dependency trees when
+not integrated. No test in this package starts a VM.

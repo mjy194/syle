@@ -1887,3 +1887,6 @@ include simple-guest.mk
 
 # Explicit Linux recovery probes; never part of default build.
 include linux-first-exit-recovery.mk
+
+# Opt-in Ring3-managed guest build; no execution by default.
+include managed-guest.mk

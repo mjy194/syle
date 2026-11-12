@@ -135,7 +135,13 @@ __attribute__((noreturn)) void syle_main(const struct syle_boot_info *boot) {
     __asm__ volatile ("outl %0,%1" : : "a"(0x10u), "Nd"((UINT16)0xf4));
 #endif
 #if !defined(RING3_TEST) && !defined(FAULT_TEST) && !defined(SMOKE_TEST)
-    if (boot->mode == 0) ring3_start(boot);
+    if (boot->mode == 0) {
+#ifdef SYLE_MANAGED_GUEST
+        extern bool linux_guest_startup_install(void);
+        if (!linux_guest_startup_install()) panic("MANAGED GUEST BACKEND UNAVAILABLE");
+#endif
+        ring3_start(boot);
+    }
     log_text("KRNL.DIAGNOSTIC_IDLE\n");
 #endif
     for (;;) __asm__ volatile ("hlt");
