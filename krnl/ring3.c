@@ -1,4 +1,5 @@
 #include "ring3.h"
+#include "guest_control.h"
 #include "paging.h"
 #include "memory.h"
 #include "user_elf.h"
@@ -30,6 +31,23 @@ extern void exceptions_user_setup(uint64_t stack_top, void (*entry)(void));
 #ifndef RING3_CASE
 #define RING3_CASE 0
 #endif
+/* One trusted bootstrap manager. Owner is never supplied by user registers.
+ * A real guest backend must be registered by boot code before ring3_start.
+ * Without it guest calls return ENOTSUP, never simulated success. */
+static struct guest_control managed_guest = { .manager=1 };
+static bool manager_started, backend_registered;
+bool ring3_guest_bind(const struct guest_backend *backend, void *context) {
+    if (manager_started || backend_registered || !backend ||
+        !backend->prepare || !backend->start || !backend->stop || !backend->release)
+        return false;
+    guest_control_init(&managed_guest,1,backend,context);
+    backend_registered=true;
+    return true;
+}
+static void guest_owner_exit(void) {
+    if (guest_control_owner_exit(&managed_guest,1))
+        panic("GUEST CLEANUP QUARANTINED");
+}
 static unsigned syscall_count;
 static uint64_t fault_probe_address;
 struct frame {
@@ -60,6 +78,11 @@ void ring3_syscall(struct frame *f) {
         panic("BAD USER SYSCALL FRAME");
     ++syscall_count;
     switch (f->rax) {
+    case SYLE_GUEST_CREATE: case SYLE_GUEST_START: case SYLE_GUEST_STOP:
+    case SYLE_GUEST_STATUS: case SYLE_GUEST_DESTROY: case SYLE_GUEST_REAP:
+    case SYLE_GUEST_STEP: case SYLE_GUEST_CONSOLE_SEND: case SYLE_GUEST_CONSOLE_RECV:
+        f->rax=(uint64_t)guest_control_call(&managed_guest,1,f->rax,f->rdi,f->rsi);
+        break;
     case 1:
         if (!readable(f->rdi, f->rsi)) { f->rax = UINT64_MAX; break; }
         for (uint64_t i = 0; i < f->rsi; ++i) {
@@ -70,6 +93,7 @@ void ring3_syscall(struct frame *f) {
         break;
     case 2: f->rax = 1; break; /* one online bootstrap CPU; no VM claims */
     case 3:
+        guest_owner_exit();
         log_text("RING3.EXIT syscall_count="); log_hex(syscall_count);
 #ifdef SYLE_RING3_DIAGNOSTIC
         finish(RING3_CASE == 0 && f->rdi == 0 && syscall_count == 4);
@@ -85,6 +109,7 @@ void ring3_syscall(struct frame *f) {
  * bootstrap currently halts on a user fault instead of recovering a process. */
 void ring3_fault(const struct frame *f, uint64_t cr2) {
     if ((f->cs & 3) != 3) return;
+    guest_owner_exit();
     log_text("RING3.USER_FAULT vector="); log_hex(f->vector);
     log_text("RING3.USER_FAULT error="); log_hex(f->error);
     (void)cr2;
@@ -129,6 +154,7 @@ static __attribute__((noreturn)) void runtime(void) {
     ring3_enter(user_entry, USER_BASE+4*PAGE-16, RING3_CASE, fault_probe_address);
 }
 __attribute__((noreturn)) void ring3_start(const struct syle_boot_info *boot) {
+    manager_started=true;
     if (!boot || boot->image.base >= UINT64_C(0x100000000) ||
         boot->image.size > UINT64_C(0x100000000)-boot->image.base ||
         (boot->framebuffer.valid && (boot->framebuffer.base >= UINT64_C(0x100000000) ||

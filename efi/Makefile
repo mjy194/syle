@@ -10,7 +10,7 @@ KFLAGS = $(filter-out -fpic,$(CFLAGS)) -fno-pic -fno-pie -mcmodel=small -DSYLE_K
 LDFLAGS = -nostdlib -znocombreloc -T $(EFI_LIB)/elf_x86_64_efi.lds -shared -Bsymbolic
 SECTIONS = -j .rodata -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel -j .rela -j .reloc
 BOOT_OBJS = build/console.o build/boot-policy.o build/boot-config.o build/kernel-loader.o
-KCOMMON = build/k-vmx-memory.o build/k-vmx.o build/k-vmx-policy.o build/k-memory.o build/k-paging.o build/k-entry.o build/k-runtime.o build/k-console.o build/k-exceptions.o build/k-exceptions-asm.o
+KCOMMON = build/k-guest-control.o build/k-vmx-memory.o build/k-vmx.o build/k-vmx-policy.o build/k-memory.o build/k-paging.o build/k-entry.o build/k-runtime.o build/k-console.o build/k-exceptions.o build/k-exceptions-asm.o
 KRUNTIME = build/k-ring3.o build/k-user-entry.o build/k-user-elf.o
 .PHONY: all smoke faults ring3 clean
 all: build/esp/EFI/BOOT/BOOTX64.EFI build/esp/syle/krnl.elf build/esp/syle/mgmt.elf build/esp/syle/boot.cfg
@@ -80,6 +80,8 @@ build/k-exceptions.o: src/exceptions.c | build
 	$(CC) $(KFLAGS) -c $< -o $@
 build/k-exceptions-asm.o: src/exceptions.S | build
 	$(CC) -g -fno-pie -c $< -o $@
+build/k-guest-control.o: ../krnl/guest_control.c | build
+	$(CC) $(KFLAGS) -c $< -o $@
 build/k-ring3.o: ../krnl/ring3.c | build
 	$(CC) $(KFLAGS) -c $< -o $@
 build/k-ring3-%.o: ../krnl/ring3.c | build
