@@ -120,6 +120,9 @@ static int start(void*c){
    diagnostic_field(" raw_reason=",0x4402);diagnostic_field(" raw_rip=",0x681e);
    diagnostic_field(" raw_qual=",0x6400);diagnostic_field(" raw_event=",0x4404);
    diagnostic_field(" raw_vectoring=",0x4408);diagnostic_field(" raw_instruction_error=",0x4400);
+   diagnostic_field(" raw_exit_length=",0x440c);
+   log_text(" raw_rax=");log_hex(g->native.gpr[0]);
+   log_text(" raw_rdx=");log_hex(g->native.gpr[3]);
    log_text(" raw_rcx=");log_hex(g->native.gpr[2]);log_text("\n");
    pf_diagnostic(g);
   }
