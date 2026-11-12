@@ -68,9 +68,16 @@ __attribute__((noinline, noreturn)) void stage0_post_ebs(void) {
     for (;;) __asm__ volatile("cli; hlt");
 }
 
+enum final_stage { FINAL_NONE, FINAL_MAP, FINAL_ALLOCATE, FINAL_EXIT };
 struct efi_context {
     EFI_HANDLE image;
     EFI_SYSTEM_TABLE *system;
+    /* Only transaction adapters update these; cleanup must not erase cause. */
+    enum final_stage final_stage;
+    EFI_STATUS final_status;
+    EFI_STATUS kernel_status;
+    uint64_t kernel_requested_base;
+    size_t kernel_requested_size;
 };
 static struct efi_context platform_context;
 
@@ -134,13 +141,18 @@ static int final_map(void *context, void *map, size_t *bytes, size_t *key,
     struct efi_context *ctx = context;
     EFI_STATUS status = uefi_call_wrapper(ctx->system->BootServices->GetMemoryMap,
                                          5, bytes, map, key, stride, version);
+    ctx->final_stage = FINAL_MAP;
+    ctx->final_status = status;
     return status == EFI_BUFFER_TOO_SMALL ? SYLE_FW_SMALL :
            EFI_ERROR(status) ? SYLE_FW_ERROR : SYLE_FW_OK;
 }
 static int final_allocate(void *context, size_t bytes, void **map) {
     struct efi_context *ctx = context;
-    return EFI_ERROR(uefi_call_wrapper(ctx->system->BootServices->AllocatePool,
-                                      3, EfiLoaderData, bytes, map));
+    EFI_STATUS status = uefi_call_wrapper(ctx->system->BootServices->AllocatePool,
+                                          3, EfiLoaderData, bytes, map);
+    ctx->final_stage = FINAL_ALLOCATE;
+    ctx->final_status = status;
+    return EFI_ERROR(status);
 }
 static void final_release(void *context, void *map) {
     struct efi_context *ctx = context;
@@ -150,19 +162,48 @@ static int final_exit(void *context, size_t key) {
     struct efi_context *ctx = context;
     EFI_STATUS status = uefi_call_wrapper(ctx->system->BootServices->ExitBootServices,
                                          2, ctx->image, key);
+    ctx->final_stage = FINAL_EXIT;
+    ctx->final_status = status;
     return status == EFI_INVALID_PARAMETER ? SYLE_FW_STALE :
            EFI_ERROR(status) ? SYLE_FW_ERROR : SYLE_FW_OK;
 }
 static int kernel_reserve(void *context, uint64_t *address, size_t size, void **destination) {
     struct efi_context *ctx = context;
+    ctx->kernel_requested_base = *address;
+    ctx->kernel_requested_size = size;
     EFI_STATUS status = uefi_call_wrapper(ctx->system->BootServices->AllocatePages,
                          4, AllocateAddress, EfiLoaderCode, size / 4096, address);
+    ctx->kernel_status = status;
     *destination = EFI_ERROR(status) ? NULL : (void *)(UINTN)*address;
     return EFI_ERROR(status);
 }
 static void kernel_release(void *context, uint64_t address, size_t size) {
     struct efi_context *ctx = context;
     uefi_call_wrapper(ctx->system->BootServices->FreePages, 2, address, size / 4096);
+}
+/* Log once at the call site, never inside a map/EBS adapter. */
+static void kernel_failure(const struct efi_context *ctx, int prepared) {
+    log_text(prepared == -2 ? "ERROR.KERNEL_ADDRESS_UNAVAILABLE\n" : "ERROR.KERNEL_LOAD\n");
+    if (prepared == -2) {
+        log_text("KERNEL.ALLOCATE_PAGES status="); log_hex(ctx->kernel_status);
+        log_text("KERNEL.REQUESTED_BASE="); log_hex(ctx->kernel_requested_base);
+        log_text("KERNEL.REQUESTED_SIZE="); log_hex(ctx->kernel_requested_size);
+    }
+}
+static void final_failure(const struct efi_context *ctx, const struct syle_exit_result *r) {
+    log_text(r->attempted ? "ERROR.EXIT_BOOT_SERVICES\n" : "ERROR.FINAL_MEMORY_MAP\n");
+    log_text("FINAL.STAGE=");
+    log_text(ctx->final_stage == FINAL_MAP ? "GetMemoryMap\n" :
+             ctx->final_stage == FINAL_ALLOCATE ? "AllocatePool\n" :
+             ctx->final_stage == FINAL_EXIT ? "ExitBootServices\n" : "none\n");
+    /* SMALL asks the helper to grow; rejection of that request is policy,
+     * not a new firmware error. SUCCESS with invalid output is validation. */
+    log_text("FINAL.CAUSE=");
+    log_text(!EFI_ERROR(ctx->final_status) ||
+             (ctx->final_stage == FINAL_MAP && ctx->final_status == EFI_BUFFER_TOO_SMALL)
+             ? "transaction-rejected\n" : "firmware-error\n");
+    log_text("FINAL.EFI_STATUS="); log_hex(ctx->final_status);
+    log_text("FINAL.TRANSACTION_STATUS="); log_hex(r->status);
 }
 static int platform_launch(void *context, const struct syle_boot_config *config) {
     struct efi_context *ctx = context;
@@ -208,7 +249,7 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
     const struct syle_kernel_allocator allocator = {ctx, kernel_reserve, kernel_release};
     int prepared = syle_kernel_prepare(kernel_file, kernel_bytes, &allocator, &plan);
     if (prepared) {
-        log_text(prepared == -2 ? "ERROR.KERNEL_ADDRESS_UNAVAILABLE\n" : "ERROR.KERNEL_LOAD\n");
+        kernel_failure(ctx, prepared);
         uefi_call_wrapper(bs->FreePool, 1, kernel_file);
         return -1;
     }
@@ -233,6 +274,8 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
         ctx, final_map, final_allocate, final_release, final_exit
     };
     struct syle_exit_result result;
+    ctx->final_stage = FINAL_NONE;
+    ctx->final_status = EFI_SUCCESS;
     log_text("STAGE0.EXIT_BOOT_SERVICES_BEGIN\n");
     if (!syle_exit_services(&exit_ops, &result)) {
         __asm__ volatile ("cli" ::: "memory");
@@ -247,13 +290,10 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
         __asm__ volatile ("mov %%cr3,%0" : "=r"(boot.inherited_cr3));
         stage0_post_ebs();
     }
-    if (!result.attempted) {
-        log_text("ERROR.FINAL_MEMORY_MAP status="); log_hex(result.status);
-        return -1;
-    }
+    final_failure(ctx, &result);
+    if (!result.attempted) return -1;
     /* Firmware can be partially torn down after a failed ExitBootServices.
        Do not return to it or call other Boot Services on this fatal path. */
-    log_text("ERROR.EXIT_BOOT_SERVICES\n"); log_hex(result.status);
     __asm__ volatile ("cli" ::: "memory");
     for (;;) __asm__ volatile ("hlt");
 }

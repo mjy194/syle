@@ -199,6 +199,8 @@ static enum nested_context_status invalidate_inner(struct nested_ept_contexts *r
             r->poisoned=true;
             return p->tree.poisoned?NESTED_CONTEXT_FLUSH_FAILED:NESTED_CONTEXT_POISONED;
         }
+        /* Notification only: reset already freed lower pages and advanced
+         * generation. Failure poisons, never rolls back that ownership change. */
         if(r->transactions&&!r->transactions->reset(r->transaction_context,p->transaction_token,p)) {
             r->poisoned=true;return NESTED_CONTEXT_POISONED;
         }

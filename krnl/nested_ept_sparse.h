@@ -90,7 +90,10 @@ bool nested_ept_sparse_reset(struct nested_ept_sparse *tree);
  * receipt commit poisons/retains the entire tree; retry requires another flush.
  * Caller has stopped execution and revoked every refill/VMCS reference. */
 typedef bool (*nested_sparse_retire_fn)(void *context,const struct nested_ept_sparse *);
-/* Exact receipt after flush, before freeing anything or changing generation. */
+/* Exact receipt after root clear and flush, before freeing anything or
+ * changing generation. Use this API when lower-page retirement requires a
+ * post-flush receipt; a context transaction reset notification is too late.
+ * Success frees lower nodes/leaves, retains root/EPTP, then advances generation. */
 bool nested_ept_sparse_reset_guarded(struct nested_ept_sparse *,nested_sparse_retire_fn,void *);
 bool nested_ept_sparse_destroy_guarded(struct nested_ept_sparse *,nested_sparse_retire_fn,void *);
 bool nested_ept_sparse_destroy(struct nested_ept_sparse *tree);

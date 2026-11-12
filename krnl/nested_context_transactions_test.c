@@ -8,6 +8,10 @@ struct alloc_state {
     bool used[POOL];
     unsigned live,calls,fail_alloc,flushes,fail_flush;
     uint64_t fail_eptp;
+    struct nested_ept_sparse *observed;
+    uint64_t old_generation;
+    unsigned events,guard_event,flush_event,last_free_event,reset_event,frees;
+    bool observe;
 };
 static bool allocate(void *context,struct nested_sparse_page *p) {
     struct alloc_state *a=context;
@@ -23,10 +27,25 @@ static void release(void *context,struct nested_sparse_page p) {
     struct alloc_state *a=context;
     assert(p.hpa>=0x100000&&!(p.hpa&4095));
     unsigned i=(unsigned)((p.hpa-0x100000)/4096);
-    assert(i<POOL&&a->used[i]);a->used[i]=false;a->live--;
+    assert(i<POOL&&a->used[i]);
+    if(a->observe) {
+        assert(a->guard_event&&a->flush_event>a->guard_event);
+        assert(!a->reset_event&&a->observed->generation==a->old_generation);
+        assert(p.hpa!=(a->observed->eptp&~UINT64_C(4095)));
+        a->last_free_event=++a->events;
+    }
+    a->frees++;a->used[i]=false;a->live--;
 }
 static bool flush(void *context,uint64_t eptp) {
     struct alloc_state *a=context;assert((eptp&4095)==0x1e||(eptp&4095)==0x5e);
+    if(a->observe) {
+        assert(a->guard_event&&!a->flush_event&&!a->last_free_event);
+        unsigned root=(unsigned)(((eptp&~UINT64_C(4095))-0x100000)/4096);
+        assert(root<POOL);
+        for(unsigned i=0;i<512;i++)assert(!((uint64_t *)memory[root])[i]);
+        assert(a->observed->generation==a->old_generation);
+        a->flush_event=++a->events;
+    }
     return a->flushes++!=a->fail_flush && eptp!=a->fail_eptp;
 }
 static const struct nested_sparse_ops ops={allocate,release,flush};
@@ -40,7 +59,7 @@ static void setup(struct nested_ept_contexts *r,struct alloc_state *a,unsigned b
 struct token { bool live,attached,published,retained; unsigned flush; };
 struct tx {
  struct alloc_state *a; struct token token[16]; unsigned n,depth,begins,ends,retired;
- bool closed,fail_reserve,fail_cancel,fail_attach,fail_publish,fail_retire,fail_reset;
+ bool closed,fail_reserve,fail_cancel,fail_attach,fail_publish,fail_retire,fail_reset,fail_pre_reset;
 };
 static bool begin(void *v,enum nested_context_operation op) {
  struct tx *t=v;(void)op;if(t->closed)return false;
@@ -75,6 +94,13 @@ static bool publish(void *v,void *token,struct nested_ept_context_item *item) {
 }
 static bool reset(void *v,void *token,struct nested_ept_context_item *item) {
  struct tx *t=v;struct token *p=token;assert(t->depth&&p->attached&&item->tree.generation>1);
+ if(t->a->observe) {
+  struct alloc_state *a=t->a;
+  assert(a->last_free_event>a->flush_event&&a->live==3);
+  assert(item->tree.generation==a->old_generation+1);
+  assert(item->tree.nodes==item->tree.root&&!item->tree.leaves&&!item->tree.fill_count);
+  a->reset_event=++a->events;
+ }
  return !t->fail_reset;
 }
 static bool retire(void *v,void *token,struct nested_ept_context_item *item) {
@@ -88,6 +114,65 @@ static const struct nested_context_transactions transactions={begin,end,reserve,
 static void init(struct nested_ept_contexts *r,struct alloc_state *a,struct tx *t) {
  setup(r,a,2,true);*t=(struct tx){.a=a};assert(nested_ept_contexts_set_transactions(r,&transactions,t));
  assert(!nested_ept_contexts_set_transactions(r,&transactions,t));
+}
+static bool guard_ok(void *v,struct nested_ept_context_item *item) {
+ struct tx *t=v;assert(t->depth&&item->transaction_token);return true;
+}
+static bool pre_reset(void *v,struct nested_ept_context_item *item) {
+ struct tx *t=v;struct alloc_state *a=t->a;
+ assert(t->depth&&a->observe&&a->observed==&item->tree);
+ assert(!a->events&&item->tree.leaves&&item->tree.fill_count==2);
+ a->guard_event=++a->events;return !t->fail_pre_reset;
+}
+static const struct nested_context_guards guards={guard_ok,pre_reset,guard_ok};
+static void test_filled_reset(bool reject_before_reset) {
+ struct nested_ept_contexts r;struct alloc_state a;struct tx t;
+ init(&r,&a,&t);assert(nested_ept_contexts_set_guards(&r,&guards,&t));
+ assert(nested_ept_contexts_select(&r,0x1001e)==NESTED_CONTEXT_OK);
+ struct nested_ept_context_item *item=r.active;
+ struct nested_ept_sparse *tree=&item->tree;
+ struct nested_ept_result mapping={.status=NESTED_EPT_OK,.l1_gpa=0x8000,
+  .hpa=0x800000,.effective12=7,.effective02=7,.leaf_resolved=true};
+ /* Distinct PD paths exercise multiple lower subtrees, not an empty root. */
+ assert(nested_ept_sparse_fill(tree,0,&mapping)==NESTED_SPARSE_OK);
+ assert(nested_ept_sparse_fill(tree,UINT64_C(1)<<30,&mapping)==NESTED_SPARSE_OK);
+ struct nested_ept_result result;
+ assert(nested_ept_contexts_lookup(&r,0,1,&result)==NESTED_SPARSE_HIT);
+ struct nested_sparse_node *root=tree->root;
+ uint64_t eptp=tree->eptp,generation=tree->generation;
+ unsigned live=a.live,frees=a.frees,flushes=a.flushes,calls=a.calls;
+ bool used[POOL];memcpy(used,a.used,sizeof used);
+ static unsigned char before[POOL][4096];memcpy(before,memory,sizeof before);
+ assert(live>3);
+ a.observe=true;a.observed=tree;a.old_generation=generation;
+ t.fail_pre_reset=reject_before_reset;t.fail_reset=!reject_before_reset;
+ assert(nested_ept_contexts_invalidate(&r,1,0x1001e)==NESTED_CONTEXT_POISONED);
+ assert(r.poisoned&&!tree->poisoned&&r.active==item&&r.items==item&&r.count==1);
+ assert(tree->root==root&&tree->eptp==eptp&&item->transaction_token==&t.token[0]);
+ assert(t.token[0].live&&t.token[0].attached&&t.token[0].published&&!t.retired);
+ assert(a.calls==calls&&t.begins==t.ends);
+ if(reject_before_reset) {
+  assert(a.events==1&&!a.flush_event&&!a.reset_event&&!a.last_free_event);
+  assert(a.flushes==flushes&&a.frees==frees&&a.live==live);
+  assert(tree->generation==generation&&tree->fill_count==2);
+  assert(!memcmp(used,a.used,sizeof used)&&!memcmp(before,memory,sizeof before));
+ } else {
+  assert(a.reset_event>a.last_free_event&&a.last_free_event>a.flush_event);
+  assert(a.flushes==flushes+1&&a.frees==frees+live-3&&a.live==3);
+  assert(tree->generation==generation+1&&tree->nodes==root&&!tree->leaves);
+ }
+ /* Poison blocks registry use; cleanup remains explicitly available. A raw
+  * retained tree pointer still requires the caller's external refill permit. */
+ unsigned events=a.events;
+ assert(!nested_ept_contexts_active(&r));
+ assert(nested_ept_contexts_lookup(&r,0,1,&result)==NESTED_SPARSE_LOOKUP_POISONED);
+ assert(!nested_ept_contexts_pin_active(&r));
+ assert(nested_ept_contexts_select(&r,0x2001e)==NESTED_CONTEXT_POISONED);
+ assert(nested_ept_contexts_invalidate(&r,2,0)==NESTED_CONTEXT_POISONED);
+ assert(a.events==events&&a.calls==calls&&t.begins==t.ends);
+ a.observe=false;t.fail_pre_reset=false;t.fail_reset=false;
+ assert(nested_ept_contexts_destroy(&r)&&!a.live&&!t.token[0].live&&t.retired==1);
+ assert(t.begins==t.ends);
 }
 int main(void) {
  struct nested_ept_contexts r;struct alloc_state a;struct tx t;
@@ -132,10 +217,8 @@ int main(void) {
  assert(nested_ept_contexts_select(&r,0x3001e)==NESTED_CONTEXT_FLUSH_FAILED);
  assert(r.active==old&&r.count==3&&a.live==9&&t.token[2].attached&&t.token[2].retained&&!t.token[2].published);
  t.fail_retire=false;assert(nested_ept_contexts_destroy(&r)&&a.live==0&&t.retired==3);
- init(&r,&a,&t);assert(nested_ept_contexts_select(&r,0x1001e)==NESTED_CONTEXT_OK);
- t.fail_reset=true;assert(nested_ept_contexts_invalidate(&r,1,0x1001e)==NESTED_CONTEXT_POISONED);
- assert(r.items&&r.items->tree.generation==2&&t.token[0].live);
- assert(nested_ept_contexts_destroy(&r)&&a.live==0);
+ test_filled_reset(false);
+ test_filled_reset(true);
 
  puts("PASS opt-in context transaction reserve/freeze/receipt/failure retention");
 }

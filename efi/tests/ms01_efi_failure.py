@@ -197,7 +197,9 @@ for name, status, expected in [('persistent-stale', 0x8000000000000002, 3),
             assert text.count('ERROR.EXIT_BOOT_SERVICES') == 1, text
             assert 'ERROR.BOOT_LAUNCH' not in text and 'KRNL.' not in text, text
             normalized = 2 if expected == 3 else 3
-            assert f'ERROR.EXIT_BOOT_SERVICES\n0x{normalized:016x}' in text, text
+            assert 'FINAL.STAGE=ExitBootServices\nFINAL.CAUSE=firmware-error\n' in text, text
+            assert f'FINAL.EFI_STATUS=0x{status:016x}' in text, text
+            assert f'FINAL.TRANSACTION_STATUS=0x{normalized:016x}' in text, text
             results.append({'scenario': 'SC-M1-BOOT-05', 'case': name,
                             'status': 'PASS', **json.loads(report.read_text())})
             print('PASS SC-M1-BOOT-05', name, flush=True)

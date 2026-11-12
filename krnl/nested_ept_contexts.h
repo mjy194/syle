@@ -19,7 +19,13 @@ enum nested_context_operation { NESTED_CONTEXT_SELECT, NESTED_CONTEXT_INVALIDATE
  * called AFTER a real flush but BEFORE any node is freed; it must durably
  * record receipts covering all historical consumers, or return false. This
  * registry only performs its own local flush; other receipts are external.
- * No callback may run guest code or reenter the registry. end cannot fail.
+ * reset is a POST-reset generation/ledger notification, NOT permission to
+ * free: lower nodes/leaves have already been freed and generation advanced.
+ * False poisons the registry without rollback; item, root and token remain
+ * owned. Admission/quiescence/refill revocation belongs in begin/pre_reset.
+ * If freeing requires a receipt after flush, use sparse_reset_guarded rather
+ * than the post-reset notification. No callback may run guest code or reenter
+ * the registry. end cannot fail.
  * Direct sparse fill/promote calls require a separate external refill permit;
  * these wrappers cannot gate callers using a tree pointer directly.
  * retain is nonfailing/no-allocation: reserved ledger storage must suffice to
@@ -88,7 +94,8 @@ bool nested_ept_contexts_init_budget(struct nested_ept_contexts *,
  * nonfailing, nonreentrant, and may modify only attachment storage/resources.
  * INIT runs after sparse init succeeds, before candidate linkage/selection;
  * RESET only after successful sparse reset; DESTROY after successful sparse
- * destroy and before item metadata free. Failed invalidations retain storage.
+ * destroy and before item metadata free. A failed post-reset transaction
+ * notification suppresses RESET but cannot restore freed lower pages.
  * A candidate whose initial flush failed gets no INIT/DESTROY callback. */
 bool nested_ept_contexts_init_config(struct nested_ept_contexts *,
     const struct nested_sparse_ops *,void *allocator_context,unsigned maxphys,

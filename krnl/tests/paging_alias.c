@@ -10,6 +10,9 @@ static unsigned flushes;
 static int valid_context=1;
 int paging_test_context(void) { return valid_context; }
 void paging_test_flush(void) { ++flushes; }
+uint64_t paging_test_cr3(void) { return root; }
+uint64_t paging_test_cr4(void) { return 0; }
+uint64_t paging_test_pat(void) { return 6; }
 uint64_t pmm_address_limit(void) { return UINT64_C(1)<<47; }
 uint64_t pmm_alloc_page_below(uint64_t limit) {
     void *p=mmap(0,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT,-1,0);

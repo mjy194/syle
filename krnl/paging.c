@@ -73,6 +73,10 @@ static void protect_range(uint64_t base,uint64_t size,uint64_t flags) {
 #ifdef PAGING_HOST_TEST
 extern int paging_test_context(void);
 extern void paging_test_flush(void);
+/* Observe hardware state without replacing the production permission walk. */
+extern uint64_t paging_test_cr3(void);
+extern uint64_t paging_test_cr4(void);
+extern uint64_t paging_test_pat(void);
 #endif
 static int seal_context(void) {
 #ifdef PAGING_HOST_TEST
@@ -217,26 +221,41 @@ int paging_smp_prepare(uint64_t trampoline,uint64_t lapic) {
 
 int paging_page_rw_wb(uint64_t physical) {
     if(!physical||(physical&4095)||!root)return 0;
-    uint64_t cr3,cr4;
+    uint64_t cr3,cr4,pat;
+#ifdef PAGING_HOST_TEST
+    cr3=paging_test_cr3();cr4=paging_test_cr4();
+#else
     __asm__ volatile("mov %%cr3,%0":"=r"(cr3));
     __asm__ volatile("mov %%cr4,%0":"=r"(cr4));
+#endif
     if(cr3!=root||(cr4&((UINT64_C(1)<<12)|(UINT64_C(1)<<17))))return 0;
+#ifdef PAGING_HOST_TEST
+    pat=paging_test_pat();
+#else
     uint32_t a,d;
     __asm__ volatile("rdmsr":"=a"(a),"=d"(d):"c"(0x277u));
-    (void)d;if((a&255)!=6)return 0;
+    pat=((uint64_t)d<<32)|a;
+#endif
+    if((pat&255)!=6)return 0;
     uint64_t va=(uintptr_t)paging_phys_to_virt(physical),table=root;
     if(!va)return 0;
+    int supervisor=0;
     for(int shift=39;shift>=12;shift-=9) {
         const uint64_t *view=paging_phys_to_virt(table);
         if(!view)return 0;
         uint64_t e=__atomic_load_n(&view[(va>>shift)&511],__ATOMIC_ACQUIRE);
-        if((e&7)!=3||(e&24))return 0;
+        if((e&3)!=3||(e&24))return 0;
+        /* Effective U/S is the AND of all levels: supervisor at any
+         * level suffices, whereas RW must hold at every level. A split
+         * table pointer may be user-accessible while its child leaf
+         * remains supervisor-only. Do not reject that still-safe mapping. */
+        if(!(e&4))supervisor=1;
         if(shift==12||(e&128)) {
             if(shift!=12&&shift!=21&&shift!=30)return 0;
             if(e&(shift==12?UINT64_C(128):UINT64_C(4096)))return 0;
             uint64_t mask=(UINT64_C(1)<<shift)-1;
             if((e&ADDR&mask)&~UINT64_C(4096))return 0;
-            return ((e&ADDR&~mask)|(va&mask))==physical;
+            return supervisor && ((e&ADDR&~mask)|(va&mask))==physical;
         }
         table=e&ADDR;
         if(!table)return 0;
