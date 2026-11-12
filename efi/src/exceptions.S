@@ -2079,6 +2079,44 @@ exception_common:
     pushq %r13
     pushq %r14
     pushq %r15
+#ifdef LINUX_GUEST_PROBE
+    # Exact armed host instruction only; never swallow general or guest faults.
+    movq %rsp,%r12
+    testb $3,144(%r12)
+    jnz .Llinux_no_fixup
+    movq 120(%r12),%rdi
+    cmpq $6,%rdi
+    je .Llinux_try_fixup
+    cmpq $13,%rdi
+    jne .Llinux_no_fixup
+.Llinux_try_fixup:
+    leaq 136(%r12),%rsi
+    andq $-16,%rsp
+    call lvn_fault_fixup
+    movq %r12,%rsp
+    testb %al,%al
+    jz .Llinux_no_fixup
+    movb $0,exception_entered(%rip)
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rbp
+    popq %rdx
+    popq %rcx
+    popq %rbx
+    popq %rax
+    addq $16,%rsp
+    iretq
+.Llinux_no_fixup:
+    movq %r12,%rsp
+#endif
     movq %rsp,%rdi
     andq $-16,%rsp
     call exception_panic
@@ -2405,3 +2443,9 @@ exception_entered: .byte 0
 nmi_spare: .skip 16384
 nmi_spare_top:
 .section .note.GNU-stack,"",@progbits
+
+#ifdef LINUX_GUEST_PROBE
+.section .rodata
+.globl lvn_exception_hook_present
+lvn_exception_hook_present: .byte 1
+#endif

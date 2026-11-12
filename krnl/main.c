@@ -33,6 +33,20 @@ __attribute__((noreturn)) void syle_main(const struct syle_boot_info *boot) {
     if (!probe || !pmm_free_page(probe) || pmm_free_page(probe))
         panic("PMM ALLOC/FREE SELFTEST FAILED");
     paging_init(boot);
+#if defined(LINUX_FIRST_EXIT_RECOVERY) || defined(LINUX_CR_RECOVERY) || defined(LINUX_PF_RECOVERY)
+#if defined(LINUX_PF_RECOVERY)
+    extern bool linux_recovery_pf_probe(void);
+    bool observed = linux_recovery_pf_probe();
+#elif defined(LINUX_CR_RECOVERY)
+    extern bool linux_recovery_cr_probe(void);
+    bool observed = linux_recovery_cr_probe();
+#else
+    extern bool linux_recovery_first_exit(void);
+    bool observed = linux_recovery_first_exit();
+#endif
+    __asm__ volatile("outl %0,%1" : : "a"(observed ? 0x10u : 0x11u), "Nd"((UINT16)0xf4));
+    for (;;) __asm__ volatile("cli; hlt");
+#endif
 #ifdef SIMPLE_GUEST_PROTOTYPE
     /* The loader-owned file stays reserved by the existing V4 payload ranges.
      * A separate opt-in target is the only consumer of this provisional ABI. */

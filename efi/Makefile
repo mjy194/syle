@@ -1882,3 +1882,6 @@ build/k-typed-root-atomic.o: ../krnl/typed_root_source_replace.inc ../krnl/typed
 
 # Separate experimental guest image; normal all target remains unchanged.
 include simple-guest.mk
+
+# Explicit Linux recovery probes; never part of default build.
+include linux-first-exit-recovery.mk
