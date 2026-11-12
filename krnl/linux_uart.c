@@ -1,5 +1,7 @@
 #include "linux_uart.h"
-static bool valid(const struct linux_uart*u){return u&&u->rh<16&&u->th<16&&u->rc<=16&&u->tc<=16&&u->rx_idle<=4&&!(u->modem&15)&&!(u->modem_external&15)&&!(u->modem_delta&0xf0)&&!(u->ier&~15)&&!(u->mcr&0xe0)&&!(u->fcr&0x3e)&&(u->lcr==0||u->lcr==3||u->lcr==0x80||u->lcr==0x83);}
+/* EPS/stick selection has no framing effect while parity enable is clear. */
+static bool lcr_supported(uint8_t v){v&=(uint8_t)~0x30u;return v==0||v==3||v==0x80||v==0x83;}
+static bool valid(const struct linux_uart*u){return u&&u->rh<16&&u->th<16&&u->rc<=16&&u->tc<=16&&u->rx_idle<=4&&!(u->modem&15)&&!(u->modem_external&15)&&!(u->modem_delta&0xf0)&&!(u->ier&~15)&&!(u->mcr&0xe0)&&!(u->fcr&0x3e)&&lcr_supported(u->lcr);}
 static unsigned capacity(const struct linux_uart*u){return (u->fcr&1)?16:1;}
 static unsigned trigger(const struct linux_uart*u){static const unsigned n[]={1,4,8,14};return (u->fcr&1)?n[u->fcr>>6]:1;}
 static uint8_t irq_id(const struct linux_uart*u){if((u->ier&4)&&u->overrun)return 6;if((u->ier&1)&&u->rc>=trigger(u))return 4;if((u->ier&1)&&(u->fcr&1)&&u->rc&&u->rx_idle>=4)return 12;if((u->ier&2)&&u->tx_pending&&u->tc==0)return 2;if((u->ier&8)&&u->modem_delta)return 0;return 1;}
@@ -30,10 +32,10 @@ bool linux_uart_access(struct linux_uart*u,unsigned reg,bool write,uint8_t*v){
  if(!valid(u)||!v||reg>7)return false;
  struct linux_uart n=*u;uint8_t r=*v;bool dlab=!!(n.lcr&128);
  if(write){switch(reg){
- case 0:if(dlab)n.dll=r;else{if(n.lcr!=3)return false;if(n.mcr&16){n.rx_idle=0;if(n.rc>=capacity(&n))n.overrun=true;else{n.rx[(n.rh+n.rc)%16]=r;n.rc++;}n.tx_pending=true;}else{if(n.tc>=capacity(&n))return false;n.tx[(n.th+n.tc)%16]=r;n.tc++;n.tx_pending=false;}}break;
+ case 0:if(dlab)n.dll=r;else{if((n.lcr&~0x30u)!=3)return false;if(n.mcr&16){n.rx_idle=0;if(n.rc>=capacity(&n))n.overrun=true;else{n.rx[(n.rh+n.rc)%16]=r;n.rc++;}n.tx_pending=true;}else{if(n.tc>=capacity(&n))return false;n.tx[(n.th+n.tc)%16]=r;n.tc++;n.tx_pending=false;}}break;
  case 1:if(dlab)n.dlm=r;else{if(r&~15)return false;if((r&2)&&!(n.ier&2)&&!n.tc)n.tx_pending=true;n.ier=r;}break;
  case 2:if(r&0x38)return false;if((r&1)!=(n.fcr&1)){n.rh=n.rc=n.th=n.tc=0;n.rx_idle=0;n.tx_pending=true;}if(r&2){n.rh=n.rc=0;n.rx_idle=0;n.overrun=false;}if(r&4){n.th=n.tc=0;n.tx_pending=true;}n.fcr=r&0xc1;break;
- case 3:if(r!=0&&r!=3&&r!=0x80&&r!=0x83)return false;n.lcr=r;break;
+ case 3:if(!lcr_supported(r))return false;n.lcr=r;break;
  case 4:if(r&0xe0)return false;if(((r^n.mcr)&16)&&n.tc)return false;n.mcr=r;modem_update(&n,(r&16)?loop_modem(r):n.modem_external);break;
  case 5:case 6:return false;
  case 7:n.scr=r;break;
