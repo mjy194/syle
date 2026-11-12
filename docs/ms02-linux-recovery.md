@@ -81,6 +81,12 @@ Host tests do not establish Linux ACPI compatibility or end-to-end boot.
 
 The independent guest APIC register profile, staged MSR transaction and
 multi-source IRQ adapter are also host-tested. They remain opt-in with APIC
-advertising disabled. Their separate tests cover receipt retries and token
-ownership; a combined MSR-to-adapter-to-IOAPIC failure/retry regression is still
-a separate coverage item. Register-model checks are not Linux APIC validation.
+advertising disabled. Their tests cover receipt retries and token ownership, including the real
+MSR-to-adapter-to-IOAPIC combination: three EOI failure/retry paths and duplicate
+receipts do not repeat RIP/EOI or clear a new Remote IRR. Register-model checks are not Linux APIC validation.
+
+The bounded MOV MMIO planner and private-RAM instruction/page-table access
+helpers are separately host-tested. The decoder uses x86 encoding-order 16-GPR
+input, not the native entry assembly's 15-GPR layout. They are not wired to
+actual device transactions. No MMIO target read, Linux MMIO execution or
+runtime APIC enablement follows from these unit tests.

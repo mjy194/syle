@@ -1,0 +1,33 @@
+Safe fetch/translation candidate, host-only, independent of instruction decoder.
+Only the supplied trusted callback may copy guest-owned RAM. The API never casts
+GPA to pointer and never reads MMIO as RAM. Caller holds exclusive BSP/guest
+memory ownership so page tables and GPR snapshot cannot race validation/use.
+
+Requires flat CPL0 64-bit CS with supported access rights, physical32 four-level
+paging, NXE semantics and CR0.WP, no PCID/LA57/SMEP/SMAP/PKU/CET. CR3 PWT/PCD
+accepted; unsupported bits rejected. 4K and 2M leaves supported, 1GiB rejected.
+A must already be set in every entry, D in write leaf: no guest-page-table fixes.
+This intentionally rejects some otherwise legal accesses instead of emulating
+pagewalk side effects. Permission/reserved-bit failures never authorize resume.
+
+Fetch supplies a byte prefix of length 0..15, not padded. Bytes after returned
+count are unavailable and MUST NOT be passed as valid decoder input. A short
+instruction can succeed before an inaccessible next page. Consumer must decode
+within returned length, check next RIP/operand data span, and use architectural
+GPR ordering. Existing native order differs (AX BX CX DX...), requiring explicit
+mapping including RSP from VMCS. This module is not a decoder and does not trust
+VM-exit instruction-length for EPT exits.
+
+Data validation takes decoded GLA/width/direction plus raw exit proof. Only exact
+reason48, no vectoring, qualification0x181 read/0x182 write are accepted. These
+encode no EPT permissions, valid translated GLA, and only the matching data access.
+Other pagewalk, execute, A/D, reserved or mixed accesses stop. Every byte's guest
+translation must equal exit GPA+offset. Data stays within one 4K page and a trusted
+registered window wholly above private RAM and below4GiB; no target RAM read.
+Caller still owns device-specific register alignment/width/mode validation and
+transactional commit; this layer alone does not authorize device effects.
+
+Remaining integration: reviewed MOV decoder, byte-register semantics, staged
+APIC/device state and EOI receipt, current VMCS snapshot, consistent CPU/firmware
+profile. No guest exception injection or mutation here. Default APIC unchanged.
+Tests: sh krnl/tests/linux_mmio_memory.sh (ASan/UBSan + freestanding).
