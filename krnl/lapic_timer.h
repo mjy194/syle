@@ -11,7 +11,7 @@
 struct lapic_timer {
     uint32_t lvt, divide, initial;
     uint64_t deadline, last_now, period, last_expirations;
-    bool armed, periodic_supported;
+    bool armed, periodic_supported, guest_profile;
 };
 enum lapic_timer_event {
     LAPIC_TIMER_INVALID,
@@ -23,9 +23,21 @@ enum lapic_timer_event {
 void lapic_timer_init(struct lapic_timer *t, uint64_t now);
 void lapic_timer_init_mode(struct lapic_timer *t, uint64_t now,
                            bool periodic_supported);
+/* Opt-in guest register policy: periodic supported; LVT vector/mask/mode
+ * writes permitted while armed, preserving the current countdown/phase.
+ * Caller MUST poll due expiry before an armed LVT write; a due write is
+ * rejected without mutation. Divider changes still require cancellation.
+ * This is a device model, not VM-exit wiring or a calibrated clock. */
+void lapic_timer_init_guest(struct lapic_timer *t, uint64_t now);
+/* xAPIC timer-only aligned 32-bit MMIO offsets: 320/380/390/3e0.
+ * Shares state and semantics with MSR functions. Unknown offset, width,
+ * unaligned access and RO write reject without changing state/output.
+ * Caller must separately validate APIC mode and mapped guest address. */
+bool lapic_timer_mmio(struct lapic_timer *t, uint64_t offset, unsigned width,
+                      bool write, uint32_t *value, uint64_t now);
 /* Supported MSRs: 832 LVT, 838 initial, 839 current (RO), 83e divider.
  * Successful reads/writes advance last_now. Rejected operations leave t and
- * output unchanged. Configuration writes require !armed, including same-
+ * output unchanged. In legacy profiles configuration writes require !armed, including same-
  * value writes; initial=0 cancels and initial>0 restarts an active timer.
  * Periodic bit17 is allowed only with periodic_supported. Bit18 is rejected.
  * Current-count reads compute the current periodic phase even before poll,

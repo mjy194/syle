@@ -1,5 +1,6 @@
 #include "ioapic.h"
 #define MASK (1u<<16)
+#define LOW_ACTIVE (1u<<13)
 #define LEVEL (1u<<15)
 #define REMOTE (1u<<14)
 static bool deliver(struct ioapic *a,struct ioapic_pin *p) {
@@ -13,6 +14,15 @@ static bool level_ready(const struct ioapic_pin *p) {
 void ioapic_init(struct ioapic *a,ioapic_enqueue_fn enqueue,void *context) {
     *a=(struct ioapic){.enqueue=enqueue,.context=context};
     for(unsigned i=0;i<IOAPIC_PINS;i++) a->pins[i].low=MASK;
+}
+void ioapic_init_guest(struct ioapic *a,ioapic_enqueue_fn enqueue,void *context) {
+    ioapic_init(a,enqueue,context);
+    a->guest_profile=true;
+}
+bool ioapic_set_level(struct ioapic *a,unsigned pin,bool high) {
+    if(!a || pin>=IOAPIC_PINS) return false;
+    bool asserted=high != ((a->pins[pin].low&LOW_ACTIVE)!=0);
+    return ioapic_set_irq(a,pin,asserted);
 }
 bool ioapic_retry(struct ioapic *a,unsigned pin) {
     if(pin>=IOAPIC_PINS) return false;
@@ -63,10 +73,22 @@ enum device_status ioapic_mmio(void *context,uint64_t offset,unsigned width,
         *value=(reg&1)?0:p->low|(p->remote_irr?REMOTE:0);
         return DEVICE_HANDLED;
     }
-    if(p->remote_irr) return DEVICE_FAULT;
+    if(p->remote_irr) {
+        /* A guest may mask an in-service level line before acknowledging
+         * it; keep the delivery identity until EOI. Read-only Remote IRR
+         * may be present in the normal read/modify/write value. */
+        if(!a->guest_profile || (reg&1)) return DEVICE_FAULT;
+        uint32_t low=*value&~REMOTE;
+        if((low&~MASK)!=(p->low&~MASK)) return DEVICE_FAULT;
+        if(!(low&MASK)) for(unsigned i=0;i<IOAPIC_PINS;i++)
+            if(i!=pin && !(a->pins[i].low&MASK) &&
+               (uint8_t)a->pins[i].low==(uint8_t)low) return DEVICE_FAULT;
+        p->low=low;
+        return DEVICE_HANDLED;
+    }
     if(reg&1) return *value==0?DEVICE_HANDLED:DEVICE_FAULT;
     uint32_t low=*value;
-    if((low&~(0xffu|MASK|LEVEL)) || (low&0xff)<32) return DEVICE_FAULT;
+    if((low&~(0xffu|MASK|LEVEL|(a->guest_profile?LOW_ACTIVE:0))) || (low&0xff)<32) return DEVICE_FAULT;
     if(!(low&MASK)) for(unsigned i=0;i<IOAPIC_PINS;i++)
         if(i!=pin && !(a->pins[i].low&MASK) &&
            (uint8_t)a->pins[i].low==(uint8_t)low) return DEVICE_FAULT;

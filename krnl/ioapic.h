@@ -6,6 +6,7 @@ typedef bool (*ioapic_enqueue_fn)(void *context, uint8_t vector);
 struct ioapic_pin { uint32_t low; bool asserted, remote_irr; };
 struct ioapic {
     uint8_t selector;
+    bool guest_profile;
     struct ioapic_pin pins[IOAPIC_PINS];
     ioapic_enqueue_fn enqueue;
     void *context;
@@ -13,6 +14,14 @@ struct ioapic {
 /* Single destination CPU0, fixed delivery, active-high. No MSI, polarity,
  * lowest-priority, logical destination, arbitration or multicore routing. */
 void ioapic_init(struct ioapic *a, ioapic_enqueue_fn enqueue, void *context);
+/* Opt-in guest policy supports active-low programming and mask-only
+ * updates while Remote IRR is set. Routing/vector/trigger changes remain
+ * blocked until EOI. Legacy initializer keeps strict diagnostic semantics. */
+void ioapic_init_guest(struct ioapic *a, ioapic_enqueue_fn enqueue, void *context);
+/* Electrical pin input; convert through the programmed polarity. Callers
+ * using set_irq already supply logical assertion and must NOT invert twice.
+ * Re-drive physical level after changing polarity; line history is logical. */
+bool ioapic_set_level(struct ioapic *a,unsigned pin,bool high);
 enum device_status ioapic_mmio(void *context,uint64_t offset,unsigned width,
     bool write,uint32_t *value);
 /* A failed enqueue retains the level line but never sets remote IRR.

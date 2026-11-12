@@ -29,6 +29,27 @@ void lapic_timer_init_mode(struct lapic_timer *t, uint64_t now,
 void lapic_timer_init(struct lapic_timer *t, uint64_t now) {
     lapic_timer_init_mode(t,now,false);
 }
+void lapic_timer_init_guest(struct lapic_timer *t, uint64_t now) {
+    lapic_timer_init_mode(t,now,true);
+    t->guest_profile=true;
+}
+bool lapic_timer_mmio(struct lapic_timer *t,uint64_t offset,unsigned width,
+                      bool write,uint32_t *value,uint64_t now) {
+    if(!t || !value || width!=4) return false;
+    uint32_t msr;
+    switch(offset) {
+    case 0x320: msr=0x832;break;
+    case 0x380: msr=0x838;break;
+    case 0x390: msr=0x839;break;
+    case 0x3e0: msr=0x83e;break;
+    default: return false;
+    }
+    if(write) return lapic_timer_write(t,msr,*value,now);
+    uint64_t result;
+    if(!lapic_timer_read(t,msr,now,&result)) return false;
+    *value=(uint32_t)result;
+    return true;
+}
 bool lapic_timer_read(struct lapic_timer *t,uint32_t msr,
                       uint64_t now,uint64_t *value) {
     if(now<t->last_now) return false;
@@ -63,7 +84,8 @@ bool lapic_timer_write(struct lapic_timer *t,uint32_t msr,
     case 0x832:
         /* Fixed delivery; optional periodic only. Deadline mode and
          * reserved/status fields remain rejected in both profiles. */
-        if(t->armed || (value&~UINT64_C(0x300ff)) || (value&0xff)<32 ||
+        if((t->armed && (!t->guest_profile || now>=t->deadline)) ||
+           (value&~UINT64_C(0x300ff)) || (value&0xff)<32 ||
            ((value&(1u<<17)) && !t->periodic_supported))
             return false;
         t->lvt=(uint32_t)value;
