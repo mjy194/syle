@@ -1,0 +1,20 @@
+Host-only adapter using exact device source mjy194/syle commit f1c89ba.
+Default opt_in=false. Does NOT change CPUID, enable APIC, or wire dispatcher.
+Dependency is diagnostic x2APIC subset, not complete Linux-compatible APIC.
+Initialize only fresh/quiescent context after full guest destruction; no callback
+or inflight reinitialization. All APIs require single-BSP serialization.
+Caller owns models and must route all writes through serialization: no external
+LAPIC or IOAPIC mutation during reservation. Snapshot check detects changes but
+is not concurrency control. Unique generation tokens may never wrap.
+Only IRQ4 level-triggered fixed physical CPU0 route with other pins masked is
+accepted. Latest ioapic represents fixed destination implicitly; no dest field.
+Logical assertion goes directly to set_irq without polarity inversion. Failed
+set_irq may retain level; caller retries latest level after reservation ends.
+Never replay failed edges. No implicit retry on cancellation/accounting.
+Receipt comes ONLY from reviewed linux_external_irq helper. lia_accept is its
+account callback after successful consumed-metadata cleanup; it cannot itself
+prove delivery. No entry on cleanup/account failure. Unknown outcome quarantines.
+Cancel only after proven no-entry and VMCS cleanup, leaving IRR unchanged.
+EOI retires at most once; retired=true with false return means delivery retry
+needed, NOT another EOI. Use lia_irq4 with latest logical level for retry.
+No VM executed. Host tests use untouched isolated official repository sources.

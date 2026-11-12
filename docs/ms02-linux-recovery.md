@@ -65,3 +65,16 @@ never repeat an already-committed byte operation. Initialization requires a
 fresh/quiescent context; the busy flag is not protection against arbitrary
 trusted kernel callers. The bridge remains separate from live VM-exit/input
 routing and does not establish working Linux interaction.
+
+## Optional IRQ and ACPI components
+
+The external IRQ transaction helper and LAPIC/IOAPIC reservation adapter are
+host-verified components. Unknown delivery state quarantines ownership instead
+of inventing successful delivery. IOAPIC accesses must use the adapter gate.
+They do not enable APIC exposure or IRQ injection in a running Linux guest.
+
+ACPI topology generation provides a single-CPU LAPIC/IOAPIC fragment, not full
+firmware. The optional installer validates the supplied E820/RSDP contract,
+writes/verifies tables before updating the pointer, and marks partial writes
+dirty instead of allowing unsafe reuse. It is not invoked by the default loader.
+Host tests do not establish Linux ACPI compatibility or end-to-end boot.

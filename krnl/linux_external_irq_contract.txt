@@ -1,0 +1,22 @@
+External IRQ transaction helper, host-only; NOT wired into dispatcher/APIC.
+Intel SDM Vol3C 326019 (2024), sections 25.8.3, 25.9.3, 28.2.4:
+VM exit clears VM-entry interruption-info valid; this is not a delivery receipt.
+IDT-vectoring records an event interrupted during delivery. Its absence alone
+is insufficient; exceptional exits can occur without a vectoring receipt.
+Only verified successful entry followed by CPUID/CR/IO/RDMSR/WRMSR/HLT instruction
+intercepts (10/28/30/31/32/12), without vectoring, supports this narrow receipt.
+All unknown/timer/EPT/exception outcomes quarantine the token. No event replay.
+Caller must retain raw exit/vectoring information outside this helper.
+Single BSP: reserve a unique LAPIC vector token before stage; prohibit competing
+event writers, device enqueue, and LAPIC selection changes until reconciliation.
+PF/highPF pending and external ownership must be mutually exclusive. Snapshot
+must come from current VMCS. False stage/cleanup forbids entry. A definite native
+VMfail or exact VM-entry invalid-state/MSR-load failure (bit31 + 33/34) preserves IRR and permits cancel, never auto-retry.
+An accept callback false MUST not consume ownership; success atomically transfers
+reserved IRR to ISR exactly once. If device model cannot guarantee reservation,
+keep this helper disabled. Account failure retries accounting, never injection.
+lei_clear_delivered must clear consumed metadata successfully before account.
+Any clear failure retains receipt/token and forbids entry; only cleanup may retry.
+Successful account releases arbitration ownership. Helper IDLE is not permission to resume.
+DEFER_WINDOW only requests caller policy; it changes no controls/RIP/IRR.
+No APIC advertisement, VM execution, or complete interrupt-delivery claim.

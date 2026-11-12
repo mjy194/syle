@@ -27,6 +27,10 @@ run msr-bank krnl/host-tests/linux_msr_bank.c krnl/linux_msr_bank.c krnl/linux_v
 run uart-model krnl/tests/linux_uart.c krnl/linux_uart.c
 run uart-model-io krnl/tests/linux_uart_model_io.c krnl/linux_uart_model_io.c krnl/linux_uart.c
 run uart-runtime krnl/tests/linux_uart_runtime.c krnl/linux_uart_runtime.c krnl/linux_uart_model_io.c krnl/linux_uart.c
+run external-irq krnl/tests/linux_external_irq.c krnl/linux_external_irq.c
+run irq-adapter krnl/tests/linux_irq_adapter.c krnl/linux_irq_adapter.c krnl/lapic.c krnl/ioapic.c krnl/linux_external_irq.c
+run acpi-topology krnl/tests/linux_acpi_topology.c krnl/linux_acpi_topology.c
+run acpi-install krnl/tests/linux_acpi_install.c krnl/linux_acpi_install.c krnl/linux_acpi_topology.c
 # Native harness uses CPL3 refusal/fixup and user FX state only. Do not apply
 # sanitizer instrumentation across the intentional FX-state exchange.
 "$CC" -std=c11 -Ikrnl -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -fno-pie -no-pie krnl/host-tests/linux_vcpu_native.c krnl/host-tests/linux_vcpu_native_fx.S krnl/linux_vcpu_native.c krnl/linux_vcpu_native.S krnl/linux_vcpu_state.c -o "$tmp/native"

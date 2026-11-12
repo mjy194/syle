@@ -1,0 +1,22 @@
+Host-only opt-in topology fragment, not complete ACPI firmware.
+Fixed GPA region [0xe0000,0xf0000), inside current reserved E820 [0x9f000,0x100000).
+RSDP2 at e0000, XSDT e0040, MADT e0080; blob202bytes, no host pointers.
+Local APIC type0 UID0/ID0 enabled, IOAPIC ID0 (matching current IOAPIC ID register)/FEC00000/GSI0, LAPIC FEE00000.
+ISA IRQ4 override to GSI4 active-high/level (0xD) is an explicit synthetic
+platform contract, NOT default ISA edge wiring. Only matches level-only bridge.
+PCAT_COMPAT=0: no claim of working 8259. No extra AP/NMI entries.
+No APIC mode selection: type0 ID0 does not guarantee Linux chooses x2APIC.
+Caller must independently implement/register MMIO and enforce profile/CPUID
+consistency. Current loader does not call this module or publish its pointer.
+Future integration writes guest RSDP GPA to boot_params offset0x70 per Linux
+v6.12 arch/x86/include/uapi/asm/bootparam.h; not setup_header. Protocol2.14
+is explicitly unusable per kernel boot documentation; current image says2.15.
+No FADT/DSDT/AML/SCI/power management/timer/UEFI services or MP tables provided.
+Linux ACPI acceptance is NOT established by valid checksums or these host tests.
+Fixed kernel6.12.0-syle-m2 has no IKCONFIG marker; extracted ELF stripped.
+Original .config remains unavailable; APIC/ACPI compile state unverified.
+Generator builds locally then copies; invalid arguments leave output unchanged.
+Guest RAM writer/integration failures require separate transactional ownership
+handling; this module neither writes guest memory nor reserves E820 itself.
+Sources: docs.kernel.org/arch/x86/boot.html; Linux v6.12 bootparam.h;
+ACPI RSDP/XSDT/MADT standard layouts, not borrowed host firmware tables.
