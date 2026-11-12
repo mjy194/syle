@@ -96,3 +96,5 @@ sh krnl/tests/linux_idle_dispatch.sh
 
 sh krnl/tests/linux_uart_lcr_semantics.sh
 sh krnl/tests/linux_uart_lcr_audit.sh
+
+sh krnl/tests/linux_i8042_dispatch.sh

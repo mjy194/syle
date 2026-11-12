@@ -1,0 +1,44 @@
+Syle guest i8042 absence read-only profile v1
+Base: 7093113; full source /tmp/syle-uart-config-7093113-source.tar.gz
+SHA256 c945825d9d7e1e5b03cd6d16dad60498bc7d3bd1e76f146b9622a0e178a5e9b0.
+
+Production delta: linux_i8042_absent.c/h -> krnl; linux_guest_dispatch.c -> krnl;
+managed-guest.mk -> efi (adds required module, no configuration change).
+No context layout change. No dynamic device state or host I/O callbacks.
+
+Precisely ports 60 and 64, byte IN, CPL0, reason30, immediate length2 or DX
+length1 with matching low DX, strict qualification and canonical RIP/span.
+Return open-bus FF into AL, preserve high56 and every other GPR. This is an
+explicit absent virtual device profile, not a functioning keyboard controller.
+OUT (including reset/A20), wider, REP/string, and unknown ports fail-stop.
+No fabricated keyboard bytes, IRQ1/12, command responses, or host I/O.
+RIP VMWRITE precedes AL commit; false may mean partial VMCS write and caller
+must latch failure/no-resume. Single BSP dispatcher busy guards serialization;
+VMWRITE callback must not reenter. No extra delay/tick; standard successful
+dispatch advances unified clock once; failed dispatch does not commit it.
+
+Evidence:
+https://github.com/torvalds/linux/blob/v6.12/drivers/input/serio/i8042.c
+lines272-295 flush: while OBF, bounded count16, read data after udelay50;
+17th status with OBF still set returns EIO. controller_check lines940-948
+prints No controller found and returns ENODEV. init lines1624 onward checks
+before setting present/registering platform device. Thus FF on both registers
+causes bounded absence detection, not a keyboard scancode delivery.
+https://github.com/torvalds/linux/blob/v6.12/drivers/input/serio/i8042.h
+I8042_BUFFER_SIZE=16.
+https://github.com/torvalds/linux/blob/v6.12/drivers/input/serio/i8042-acpipnpio.h
+x86 default status/command64,data60, read via inb.
+
+Existing experimental reduced FADT boot flags0x28 do not advertise8042 bit1;
+DSDT contains CPU/UART, no keyboard/mouse claim. Legacy baseline absence of
+FADT is not a positive ACPI no8042 assertion. This patch does not alter firmware.
+Final M2 input capability is still separate work; absence does not complete it.
+
+Validation: sh test.sh (requires exact base extracted under base/). Script
+contains full real-source dependency list, no stubs replacing dispatcher.
+ASan/UBSan detect_leaks=0 and freestanding compilation PASS.
+Both ports/immediate/DX, qualification bit corruption, CPL/reason/length,
+canonical/end overflow, partial RIP failure, preserved GPRs and AL highbits.
+Actual default/legacy dispatcher exercised; Linux flush analogue observes
+17status/16data and EIO. Analogue omits delays, not a real Linux boot test.
+No VM or hardware was run. Existing fixture regressions PASS.

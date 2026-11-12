@@ -1,4 +1,5 @@
 #include "linux_guest_dispatch.h"
+#include "linux_i8042_absent.h"
 #include "linux_guest_manager.h"
 #include "linux_guest_snapshot.h"
 #include "linux_cpu_commit.h"
@@ -155,6 +156,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  case 16:ok=lpit2_rdtsc(&d->pit,s->native.gpr,rip,0,reason,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite)==LPIT_COMMITTED;break;
  case 31:case 32:ok=msr(d,s,reason,rip,(unsigned)len);break;
  case 30:
+  if((q>>16)==0x60||(q>>16)==0x64){ok=li8042_read(s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite);break;}
   if((q>>16)==0x80){ok=lp80_io(&d->post,s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite);break;}
   if((q>>16)==0x70||(q>>16)==0x71){ok=lrtc_io(&d->rtc,s->native.gpr,rip,0,reason,q,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite);break;}
   if((q>>16)==0x20||(q>>16)==0x21||(q>>16)==0xa0||(q>>16)==0xa1){
