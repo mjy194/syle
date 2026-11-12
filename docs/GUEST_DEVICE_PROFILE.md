@@ -48,3 +48,26 @@ IOAPIC arbitrary destinations/logical/lowest-priority modes, full event replay,
 PIC/PIT/HPET and ACPI/firmware device enumeration. IOAPIC remains single CPU0,
 24 pins, fixed delivery and rejects duplicate unmasked vectors. Linux boot and
 interactive shell remain unverified; this increment is not full M2 completion.
+
+## External LAPIC bridge API increment
+
+`bool lapic_enqueue_external(struct lapic *, unsigned vector)` accepts fixed
+vectors 32..255 only while existing x2APIC/software-enable are active. Invalid
+or disabled requests return false without mutation; caller retains a level
+request for retry. TPR/ISR gates selection, not enqueue. Repeated pending vector
+coalesces. This does not introduce xAPIC-mode support or enable guest CPUID APIC.
+
+`bool lapic_eoi_vector(struct lapic *, uint8_t *vector)` retires highest ISR and
+returns it so caller can propagate `ioapic_eoi`. Empty ISR, null or unsupported
+mode returns false without changing output. Existing MSR EOI remains successful
+on empty ISR. Do not independently call both MSR EOI and this API for one EOI.
+
+`lapic_select` remains non-consuming. `lapic_accept` must follow confirmed
+entry acceptance, not just VM-entry-field programming. Interrupt-window,
+failed-entry and IDT-vectoring transactions belong to the dispatcher; this
+increment does not implement them or claim Linux IRQ delivery. Existing guest
+CPUID hides APIC, so these APIs must not be enabled as a falsely advertised
+working APIC platform. Explicit guest feature negotiation remains necessary.
+
+Added pure host test covers queue/priority/coalescing, EOI vector order and a
+level IRQ4 IOAPIC->LAPIC->EOI cycle. Legacy LAPIC regression also passes.

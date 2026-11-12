@@ -15,6 +15,15 @@ void lapic_init(struct lapic *a);
 /* Unsupported/invalid accesses return false without changing state/output. */
 bool lapic_read(const struct lapic *a, uint32_t msr, uint64_t *value);
 bool lapic_write(struct lapic *a, uint32_t msr, uint64_t value);
+/* Fixed external delivery into the existing x2APIC-only model. Accept only
+ * vectors 32..255 while software/hardware APIC enabled; otherwise false,
+ * unchanged. TPR/ISR priority does NOT reject enqueue: select gates delivery.
+ * Same-vector pending events coalesce. Caller retains level on false. */
+bool lapic_enqueue_external(struct lapic *a, unsigned vector);
+/* Retire highest ISR and return its vector for IOAPIC EOI propagation.
+ * False for null, non-x2APIC or empty ISR, state/output unchanged.
+ * Empty EOI remains a successful architectural no-op in lapic_write(). */
+bool lapic_eoi_vector(struct lapic *a, uint8_t *vector);
 uint8_t lapic_ppr(const struct lapic *a);
 /* Selection does not consume pending state. Commit only after successful
  * guest entry, before emulating a subsequent guest register access.

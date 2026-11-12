@@ -58,3 +58,10 @@ OUT2, loopback/modem state and four-character timeout. `linux_uart_model_io`
 commits device/register effects only after the guest RIP VMWRITE succeeds.
 The original TX-only runtime is unchanged. Input sourcing, VM-exit routing,
 IRQ injection and Linux interaction are not wired or verified by these units.
+
+The UART runtime bridge distinguishes rejection, committed I/O and committed
+I/O with IRQ delivery pending. Callers must retry only IRQ synchronization,
+never repeat an already-committed byte operation. Initialization requires a
+fresh/quiescent context; the busy flag is not protection against arbitrary
+trusted kernel callers. The bridge remains separate from live VM-exit/input
+routing and does not establish working Linux interaction.

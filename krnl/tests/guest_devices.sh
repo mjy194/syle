@@ -16,7 +16,11 @@ for test in ioapic guest_ioapic; do
         "$root/krnl/tests/$test.c" -o "$build/$test"
     "$build/$test"
 done
-for unit in lapic_timer ioapic; do
+"$cc" -std=c11 -Wall -Wextra -Werror -fsanitize=undefined \
+    "$root/krnl/lapic.c" "$root/krnl/ioapic.c" \
+    "$root/krnl/tests/lapic_external.c" -o "$build/lapic_external"
+"$build/lapic_external"
+for unit in lapic_timer ioapic lapic; do
     "$cc" -std=c11 -Wall -Wextra -Werror -ffreestanding -mno-red-zone \
         -c "$root/krnl/$unit.c" -o "$build/$unit.o"
 done

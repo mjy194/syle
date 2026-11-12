@@ -15,6 +15,19 @@ static bool enabled(const struct lapic *a) {
 void lapic_init(struct lapic *a) {
     *a = (struct lapic){.base = APIC_BASE_XAPIC, .svr = 0xff};
 }
+bool lapic_enqueue_external(struct lapic *a, unsigned vector) {
+    if(!a || !enabled(a) || vector<32 || vector>255) return false;
+    a->irr[vector/32] |= UINT32_C(1) << (vector%32);
+    return true;
+}
+bool lapic_eoi_vector(struct lapic *a, uint8_t *vector) {
+    if(!a || !vector || a->base!=APIC_BASE_X2APIC) return false;
+    int retired=highest(a->isr);
+    if(retired<0) return false;
+    a->isr[(unsigned)retired/32] &= ~(UINT32_C(1) << (retired%32));
+    *vector=(uint8_t)retired;
+    return true;
+}
 uint8_t lapic_ppr(const struct lapic *a) {
     int in_service = highest(a->isr);
     unsigned isr_class = in_service < 0 ? 0 : (unsigned)in_service & 0xf0u;
@@ -66,9 +79,8 @@ bool lapic_write(struct lapic *a, uint32_t msr, uint64_t value) {
         return true;
     case 0x80b: {
         if (value != 0) return false;
-        int vector = highest(a->isr);
-        if (vector >= 0)
-            a->isr[(unsigned)vector / 32] &= ~(UINT32_C(1) << (vector % 32));
+        uint8_t vector;
+        (void)lapic_eoi_vector(a,&vector);
         return true; /* EOI with no in-service vector is a no-op */
     }
     case 0x83f:
