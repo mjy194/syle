@@ -1,0 +1,20 @@
+Opt-in host-only single-BSP multi-source adapter, no default runtime wiring.
+Uses real guest_apic_accept, snapshots complete model including timer/TMR and
+pending_level plus IOAPIC. Caller serializes EVERY model access through the
+reservation guard; snapshot comparison is defense, not concurrency control.
+Byte snapshots intentionally include padding: changing object representation
+may conservatively reject accounting, never silently consume another IRQ.
+UART source is level IRQ4 with matching route and remoteIRR. Local edge source
+may be timer or selfIPI; hardware-model IRR has no finer provenance, so do not
+claim every edge is a timer. Opposite trigger-mode collisions fail closed.
+EOI sink matches linux_apic_msr domain/sequence contract. Unique domain lifetime
+must cover all surviving receipts; never reuse across CREATE. Only the exact
+latest receipt may retry; future/outdated/mismatched receipts reject. A successful
+receipt duplicate has zero device effects. On first failure record receipt before
+IOAPIC EOI; retry only ioapic_retry, never ioapic_eoi, preventing newly set remote
+IRR being cleared twice. Pending effect blocks new reserve/poll/MMIO/line updates.
+Caller retains latest UART line for retry after pending notification completes.
+MSR producer calls sink only for committed level EOIs, never edge timer EOIs.
+Raw APIC write cannot bypass token ownership; gia_exclusive required by producer.
+False accounting never consumes token/IRR. Unknown delivery quarantines; cancel
+only after definite no-entry cleanup. No full event replay or APIC enable claim.

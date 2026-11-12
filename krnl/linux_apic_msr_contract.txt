@@ -1,0 +1,44 @@
+Standalone guest APIC MSR transaction candidate; host-only, not connected to
+existing dispatcher, not an APIC enable/profile claim.
+
+Dependency: reviewed guest_apic model archive SHA256
+ db6fb383f5d9d6f8256052b9efa1b0ff91983ac347cb2a7899c7e33517ed20eb.
+The model and all nested lapic/timer state are pointer-free, so the transaction
+clones the entire guest_apic, never just its embedded legacy irq member.
+
+Caller must serialize the whole guest/device domain, prohibit inflight external
+IRQ reservations and reject vectoring/pending exceptions before applying. Guest
+CPUID bits (not host capability bits) gate APIC/x2APIC operations. APIC_BASE
+xAPIC to x2APIC transition needs the x2APIC capability. Unsupported registers or
+modes fail closed. Existing conservative CPUID remains unchanged and hides APIC.
+
+Poll the cloned timer first using explicit synthetic device time, then perform
+the register operation. No model or output effect is committed before RIP write
+succeeds. Failure of VMWRITE is FATAL even if it may have written successfully;
+never resume/retry the instruction. Guest model/GPRs remain unchanged. A rejected
+model operation has not committed an expiry or delivered any external event.
+After successful RIP write, commit the entire staged model once, then GPR read
+results, then notify level EOI. Callback failure never rolls back the model or
+replays EOI. Pending notification blocks further transactions until resolved.
+
+Sink notification identifies (unique guest domain generation, monotonic sequence,
+vector). Sink MUST preserve a receipt so a repeated token is idempotent, including
+when the original call partly applied an IOAPIC change before reporting failure.
+Do NOT wrap plain ioapic_eoi in this callback: a retry could clear a new remoteIRR.
+Domain is owner supplied, nonzero and never reused while any receipt survives.
+Sequence overflow rejects before RIP/model mutation. Full domain teardown must
+retire model plus sink receipts together; resetting a live context is forbidden.
+Only level EOI notifies IOAPIC; local edge/timer EOI does not masquerade as UART.
+
+COMMITTED and EFFECT_PENDING both consumed the guest instruction. retry repeats
+only sink notification. Reentrant calls are rejected. The helper neither polls
+host TSC nor performs MSR/VMX/port operations; supplied VMWRITE callback is invoked
+only for guest RIP. Native GPR indexing is AX/BX/CX/DX then remaining registers.
+
+Host validation: GUEST_APIC_API_DIR=<verified dependency krnl> sh
+krnl/tests/linux_apic_msr.sh. ASan/UBSan and freestanding compile. Coverage includes
+mode/capability gates, partial VMWRITE failure, persistent token-dedup retry,
+reentrancy, timer expiry staging, nonmonotonic time, overflow and invalid inputs.
+Remaining integration: actual sink receipts/multisource ownership, xAPIC MMIO
+instruction decode/EPT exits, coherent CPU+firmware profile, IRQ routing, and
+independently authorized VM acceptance. No files from frozen IRQ glue are changed.

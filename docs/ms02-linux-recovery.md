@@ -78,3 +78,9 @@ firmware. The optional installer validates the supplied E820/RSDP contract,
 writes/verifies tables before updating the pointer, and marks partial writes
 dirty instead of allowing unsafe reuse. It is not invoked by the default loader.
 Host tests do not establish Linux ACPI compatibility or end-to-end boot.
+
+The independent guest APIC register profile, staged MSR transaction and
+multi-source IRQ adapter are also host-tested. They remain opt-in with APIC
+advertising disabled. Their separate tests cover receipt retries and token
+ownership; a combined MSR-to-adapter-to-IOAPIC failure/retry regression is still
+a separate coverage item. Register-model checks are not Linux APIC validation.

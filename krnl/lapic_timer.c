@@ -85,7 +85,8 @@ bool lapic_timer_write(struct lapic_timer *t,uint32_t msr,
         /* Fixed delivery; optional periodic only. Deadline mode and
          * reserved/status fields remain rejected in both profiles. */
         if((t->armed && (!t->guest_profile || now>=t->deadline)) ||
-           (value&~UINT64_C(0x300ff)) || (value&0xff)<32 ||
+           (value&~UINT64_C(0x300ff)) ||
+           ((value&0xff)<32 && !(t->guest_profile && (value&(1u<<16)))) ||
            ((value&(1u<<17)) && !t->periodic_supported))
             return false;
         t->lvt=(uint32_t)value;
@@ -97,7 +98,7 @@ bool lapic_timer_write(struct lapic_timer *t,uint32_t msr,
     case 0x838: {
         if(value>UINT32_MAX) return false;
         uint64_t delta=value*LAPIC_TIMER_BASE_TICKS*divisor(t->divide);
-        if(value && ((t->lvt&0xff)<32 || delta>UINT64_MAX-now)) return false;
+        if(value && (((t->lvt&0xff)<32 && !(t->guest_profile && (t->lvt&(1u<<16)))) || delta>UINT64_MAX-now)) return false;
         t->initial=(uint32_t)value;
         t->armed=value!=0;
         t->deadline=value?now+delta:0;
