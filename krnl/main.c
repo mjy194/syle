@@ -7,6 +7,9 @@
 #include "memory.h"
 #include "paging.h"
 #include "vmx.h"
+#ifdef SIMPLE_GUEST_PROTOTYPE
+#include "simple_guest.h"
+#endif
 #ifdef SMP_TEST
 #include "smp.h"
 #endif
@@ -30,6 +33,25 @@ __attribute__((noreturn)) void syle_main(const struct syle_boot_info *boot) {
     if (!probe || !pmm_free_page(probe) || pmm_free_page(probe))
         panic("PMM ALLOC/FREE SELFTEST FAILED");
     paging_init(boot);
+#ifdef SIMPLE_GUEST_PROTOTYPE
+    /* The loader-owned file stays reserved by the existing V4 payload ranges.
+     * A separate opt-in target is the only consumer of this provisional ABI. */
+    if (boot->user_image.size > SG_MAX_IMAGE ||
+        !simple_guest_bind(paging_phys_to_virt(boot->user_image.base),
+                           (size_t)boot->user_image.size)) {
+        log_text("SIMPLE_GUEST.IMAGE_REJECTED no_vmx_attempt\n");
+    } else {
+        vmx_probe();
+    }
+    bool completed = simple_guest_succeeded();
+    log_text(completed ? "SIMPLE_GUEST.PROTOTYPE_PASS\n" :
+                         "SIMPLE_GUEST.NOT_COMPLETED\n");
+    /* This image is a QEMU-targeted prototype, never the default boot image.
+     * Missing VMX and all rejected/failed paths use failure status, not smoke. */
+    __asm__ volatile ("outl %0,%1" : : "a"(completed ? 0x10u : 0x11u),
+                      "Nd"((UINT16)0xf4));
+    for (;;) __asm__ volatile("cli; hlt");
+#endif
 #ifdef NESTED_WT_PLATFORM_TEST
     extern bool cache_registered_platform_type(const struct syle_boot_info *,uint8_t);
     if(cache_registered_platform_type(boot,4))vmx_probe();

@@ -8,6 +8,9 @@
 #include "../../boot/exit_services.h"
 #include "../../boot/kernel_prepare.h"
 #include "../../boot/read_bounded.h"
+#ifdef SIMPLE_GUEST_PROTOTYPE
+#include "../../krnl/simple_guest.h"
+#endif
 
 /* Stage 0 is a loader/debug harness, not yet a VMX hypervisor. */
 static inline void out8(UINT16 port, UINT8 value) {
@@ -213,16 +216,32 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
 #if defined(SMOKE_TEST) || defined(FAULT_TEST) || defined(RING3_TEST)
     log_text("BOOT.TEST_IMAGE_OVERRIDE (compiled diagnostic takes precedence)\n");
 #endif
-#if !defined(SMOKE_TEST) && !defined(FAULT_TEST) && !defined(RING3_TEST)
+#if defined(SIMPLE_GUEST_PROTOTYPE) || (!defined(SMOKE_TEST) && !defined(FAULT_TEST) && !defined(RING3_TEST))
+#ifdef SIMPLE_GUEST_PROTOTYPE
+    /* Private transport for this opt-in prototype: V4 payload bytes carry the
+     * external guest ELF instead of the management ELF. Default ABI is unchanged. */
+    boot.mode = SYLE_BOOT_DIAGNOSTIC;
+    {
+        const UINTN maximum = SG_MAX_IMAGE;
+#else
     if (boot.mode == SYLE_BOOT_NORMAL) {
         const UINTN maximum = 64 * 1024;
+#endif
         void *program = NULL;
         status = uefi_call_wrapper(bs->AllocatePool, 3, EfiLoaderData, maximum, &program);
         if (EFI_ERROR(status)) { log_text("ERROR.USER_IMAGE_ALLOC\n"); return -1; }
         UINTN size = 0;
+#ifdef SIMPLE_GUEST_PROTOTYPE
+        status = read_file(ctx, L"\\syle\\guest.elf", program, maximum, &size);
+#else
         status = read_file(ctx, L"\\syle\\mgmt.elf", program, maximum, &size);
+#endif
         if (EFI_ERROR(status) || !size) {
+#ifdef SIMPLE_GUEST_PROTOTYPE
+            log_text("ERROR.SIMPLE_GUEST_IMAGE_READ\n");
+#else
             log_text("ERROR.USER_IMAGE_READ\n");
+#endif
             uefi_call_wrapper(bs->FreePool, 1, program);
             return -1;
         }
@@ -230,7 +249,11 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
         boot.user_image.size = size;
         boot.user_image_buffer.base = (UINTN)program;
         boot.user_image_buffer.size = maximum;
+#ifdef SIMPLE_GUEST_PROTOTYPE
+        log_text("BOOT.SIMPLE_GUEST_IMAGE_READY\n");
+#else
         log_text("BOOT.USER_IMAGE_READY\n");
+#endif
     }
 #endif
     void *kernel_file = NULL;

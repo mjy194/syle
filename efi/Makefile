@@ -1879,3 +1879,6 @@ build/k-nested47b-replace-memory.o: ../krnl/nested_source_replace_memory.c ../kr
 N47B_LAYOUT_OBJECTS = $(addprefix build/k-nested47b-,vcpu.o runtime.o guest.o adapter.o ept.o owner.o sparse.o memory.o domain-memory.o payload.o smp.o owner-replace.o round.o fixture.o replace-memory.o)
 $(N47B_LAYOUT_OBJECTS): $(NESTED_ATOMIC_LAYOUT_HEADERS) ../krnl/nested_owner_source_replace.h ../krnl/nested_source_replace_round.h ../krnl/typed_root_source_replace.h ../krnl/nested_source_replace_fixture.h
 build/k-typed-root-atomic.o: ../krnl/typed_root_source_replace.inc ../krnl/typed_root_source_successor.inc ../krnl/typed_root_source_replace.h
+
+# Separate experimental guest image; normal all target remains unchanged.
+include simple-guest.mk
