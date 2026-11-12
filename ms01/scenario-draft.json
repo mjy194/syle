@@ -1,0 +1,1294 @@
+{
+  "title": "第一里程碑需求场景草案",
+  "source": {
+    "url": "https://syle-ept-board.azureimpala2.chatgpt.site",
+    "siteVersion": 20,
+    "commit": "8f464f9f4dfd83c4f98951f22b9b0889300d1212",
+    "boardSha256": "de9bafcfc9dad99069911233f7dbe24a00d536ff43b2cd39bcfed2a8bdfc8279"
+  },
+  "status": "供确认；未修改看板",
+  "scope": {
+    "milestoneId": "MS-01",
+    "architecture": "x86-64",
+    "cpu": "BSP only",
+    "excluded": [
+      "AP 启动与 IPI/多核并发",
+      "Ring3 用户程序运行",
+      "内核计时器与定时中断服务",
+      "VMX/guest/Windows 启动",
+      "Windows 显卡驱动接管后画面",
+      "全物理固件兼容承诺"
+    ],
+    "statement": "共 64 个候选场景覆盖 9 条需求。场景确认状态一律草案；不新增实现状态、测试记录、执行结果或测试关联。场景数量不是测试数或覆盖率。"
+  },
+  "requirements": [
+    {
+      "id": "BOOT-01",
+      "title": "UEFI → 独立 ELF kernel 交接",
+      "scenarioIds": [
+        "DRAFT-MS1-001",
+        "DRAFT-MS1-002",
+        "DRAFT-MS1-003",
+        "DRAFT-MS1-004",
+        "DRAFT-MS1-005",
+        "DRAFT-MS1-006",
+        "DRAFT-MS1-014",
+        "DRAFT-MS1-021",
+        "DRAFT-MS1-024",
+        "DRAFT-MS1-028",
+        "DRAFT-MS1-030",
+        "DRAFT-MS1-044",
+        "DRAFT-MS1-059",
+        "DRAFT-MS1-064"
+      ]
+    },
+    {
+      "id": "BOOT-02",
+      "title": "可配置启动菜单与安全降级",
+      "scenarioIds": [
+        "DRAFT-MS1-007",
+        "DRAFT-MS1-008",
+        "DRAFT-MS1-009",
+        "DRAFT-MS1-010",
+        "DRAFT-MS1-011",
+        "DRAFT-MS1-012"
+      ]
+    },
+    {
+      "id": "BOOT-03",
+      "title": "kernel ELF 校验与固定地址装载",
+      "scenarioIds": [
+        "DRAFT-MS1-002",
+        "DRAFT-MS1-013",
+        "DRAFT-MS1-014",
+        "DRAFT-MS1-015",
+        "DRAFT-MS1-016",
+        "DRAFT-MS1-017",
+        "DRAFT-MS1-018",
+        "DRAFT-MS1-019",
+        "DRAFT-MS1-020",
+        "DRAFT-MS1-036"
+      ]
+    },
+    {
+      "id": "MEM-01",
+      "title": "保守物理页所有权与单页分配",
+      "scenarioIds": [
+        "DRAFT-MS1-003",
+        "DRAFT-MS1-006",
+        "DRAFT-MS1-018",
+        "DRAFT-MS1-020",
+        "DRAFT-MS1-024",
+        "DRAFT-MS1-025",
+        "DRAFT-MS1-026",
+        "DRAFT-MS1-027",
+        "DRAFT-MS1-028",
+        "DRAFT-MS1-029",
+        "DRAFT-MS1-039",
+        "DRAFT-MS1-040",
+        "DRAFT-MS1-041",
+        "DRAFT-MS1-043"
+      ]
+    },
+    {
+      "id": "MEM-02",
+      "title": "自有 CR3、W^X 与权限故障",
+      "scenarioIds": [
+        "DRAFT-MS1-017",
+        "DRAFT-MS1-022",
+        "DRAFT-MS1-023",
+        "DRAFT-MS1-030",
+        "DRAFT-MS1-031",
+        "DRAFT-MS1-032",
+        "DRAFT-MS1-033",
+        "DRAFT-MS1-034",
+        "DRAFT-MS1-035",
+        "DRAFT-MS1-036",
+        "DRAFT-MS1-037",
+        "DRAFT-MS1-038",
+        "DRAFT-MS1-039",
+        "DRAFT-MS1-041",
+        "DRAFT-MS1-042",
+        "DRAFT-MS1-043",
+        "DRAFT-MS1-046",
+        "DRAFT-MS1-053"
+      ]
+    },
+    {
+      "id": "MEM-03",
+      "title": ">4 GiB RAM 与高半区直映",
+      "scenarioIds": [
+        "DRAFT-MS1-039",
+        "DRAFT-MS1-040",
+        "DRAFT-MS1-041",
+        "DRAFT-MS1-042",
+        "DRAFT-MS1-043"
+      ]
+    },
+    {
+      "id": "DIAG-01",
+      "title": "串口、framebuffer panic 与故障诊断",
+      "scenarioIds": [
+        "DRAFT-MS1-005",
+        "DRAFT-MS1-014",
+        "DRAFT-MS1-022",
+        "DRAFT-MS1-023",
+        "DRAFT-MS1-032",
+        "DRAFT-MS1-033",
+        "DRAFT-MS1-034",
+        "DRAFT-MS1-038",
+        "DRAFT-MS1-044",
+        "DRAFT-MS1-045",
+        "DRAFT-MS1-046",
+        "DRAFT-MS1-047",
+        "DRAFT-MS1-048",
+        "DRAFT-MS1-049",
+        "DRAFT-MS1-050",
+        "DRAFT-MS1-051",
+        "DRAFT-MS1-052",
+        "DRAFT-MS1-053",
+        "DRAFT-MS1-054",
+        "DRAFT-MS1-055",
+        "DRAFT-MS1-056",
+        "DRAFT-MS1-057"
+      ]
+    },
+    {
+      "id": "DIAG-02",
+      "title": "支持内核调试",
+      "scenarioIds": [
+        "DRAFT-MS1-058",
+        "DRAFT-MS1-059",
+        "DRAFT-MS1-060",
+        "DRAFT-MS1-061",
+        "DRAFT-MS1-062",
+        "DRAFT-MS1-063",
+        "DRAFT-MS1-064"
+      ]
+    },
+    {
+      "id": "CPU-04",
+      "title": "BSP 单 CPU 内核运行环境",
+      "scenarioIds": [
+        "DRAFT-MS1-002",
+        "DRAFT-MS1-006",
+        "DRAFT-MS1-021",
+        "DRAFT-MS1-022",
+        "DRAFT-MS1-023",
+        "DRAFT-MS1-026",
+        "DRAFT-MS1-030",
+        "DRAFT-MS1-032",
+        "DRAFT-MS1-033",
+        "DRAFT-MS1-034",
+        "DRAFT-MS1-037",
+        "DRAFT-MS1-045",
+        "DRAFT-MS1-046",
+        "DRAFT-MS1-047",
+        "DRAFT-MS1-048",
+        "DRAFT-MS1-049",
+        "DRAFT-MS1-052",
+        "DRAFT-MS1-053",
+        "DRAFT-MS1-056",
+        "DRAFT-MS1-057",
+        "DRAFT-MS1-059"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "DRAFT-MS1-001",
+      "title": "固件找到并进入 Syle boot",
+      "type": "正常",
+      "requirementIds": [
+        "BOOT-01"
+      ],
+      "precondition": "目标 x86-64 UEFI 环境中存在有效 Syle EFI 启动文件。",
+      "trigger": "固件选择并启动 Syle。",
+      "expectedBehavior": "进入 Syle boot 入口，能区分已进入 boot 与尚在固件阶段；不要求第一阶段覆盖所有物理固件。",
+      "detailToConfirm": "目标固件清单尚待明确；QEMU/OVMF 是现有基线，不能扩展成所有固件承诺。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-002",
+      "title": "从 boot 完整交接到内核",
+      "type": "正常",
+      "requirementIds": [
+        "BOOT-01",
+        "BOOT-03",
+        "CPU-04"
+      ],
+      "precondition": "内核文件有效且装载资源可用。",
+      "trigger": "boot 完成装载，获取最终内存图，退出 Boot Services，再进入 kernel_entry。",
+      "expectedBehavior": "使用 ABI V4 传递约定启动信息，不传 EFI 服务指针；内核切至自有栈，控制权交接后不再调用 Boot Services。此场景只覆盖交接，不替代各模块全部场景。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-003",
+      "title": "最终内存图缓冲不够",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-01",
+        "MEM-01"
+      ],
+      "precondition": "GetMemoryMap 返回需要更大缓冲区。",
+      "trigger": "boot 扩充缓冲并重新获取最终内存图。",
+      "expectedBehavior": "仅使用完整且与当前 key 对应的内存图；不得截断描述符、越界写或把失败结果交给内核。",
+      "detailToConfirm": "建议明确扩容上限及失败退出策略，不能无限重试。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-004",
+      "title": "ExitBootServices 遇到失效 key",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-01"
+      ],
+      "precondition": "已有内存图，但退出时 key 已失效。",
+      "trigger": "重新取得内存图并重试退出。",
+      "expectedBehavior": "不以旧 key 继续；只有 ExitBootServices 成功后才进入已退出服务的路径。",
+      "detailToConfirm": "重试次数/终止上限待确定；首次失败后的固件调用需遵守 UEFI 对此状态的约束。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-005",
+      "title": "固件交接无法完成",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-01",
+        "DIAG-01"
+      ],
+      "precondition": "内存图获取或 ExitBootServices 持续失败，或关键资源不可用。",
+      "trigger": "启动链达到不可继续的失败点。",
+      "expectedBehavior": "给出所在阶段和可用错误信息，不冒充成功，不跳入依赖未满足的内核；通过当时仍安全可用的输出方式报告。",
+      "detailToConfirm": "建议失败前可返回菜单或安全终止，具体终态按失败阶段明确。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-006",
+      "title": "启动信息缺失或不兼容",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-01",
+        "CPU-04",
+        "MEM-01"
+      ],
+      "precondition": "交接参数版本、大小或必需对象地址/长度不满足 ABI。",
+      "trigger": "内核接收启动信息。",
+      "expectedBehavior": "在解引用和建立内存所有权前识别必需信息错误，拒绝继续；可选 GOP 等缺失走已定义降级路径，不当成必需字段失败。",
+      "detailToConfirm": "必需/可选字段清单、完整性检查及失败终态是建议细化，不假定现有代码已逐项具备。",
+      "scopeBasis": "既定 ABI 目标；错误输入处理细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-007",
+      "title": "配置正常且主动选择启动项",
+      "type": "正常",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "precondition": "配置含支持的 normal/diagnostic、默认项、title、timeout。",
+      "trigger": "通过有效数字键或 Enter 选择。",
+      "expectedBehavior": "最终只执行被选定的一项；标题、默认项和选项含义一致；菜单选择明确传递到后续启动流程。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-008",
+      "title": "无人输入或没有键盘",
+      "type": "正常",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "precondition": "存在合法默认项；无人输入或固件未提供键盘。",
+      "trigger": "菜单等待结束或按无键盘策略处理。",
+      "expectedBehavior": "进入明确的安全默认项，不因键盘缺失无限等待；与交互选择的结果保持一致。",
+      "detailToConfirm": "无键盘时是立即默认还是等待既定时限，作为行为细项确认。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-009",
+      "title": "配置文件缺失或无法读取",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "precondition": "EFI 分区未找到配置或读取失败。",
+      "trigger": "boot 请求配置。",
+      "expectedBehavior": "提示使用默认配置，采用明确的安全默认项；不得把未初始化数据当配置。",
+      "detailToConfirm": "默认项和提示方式可沿用当前策略，确认是否需要返回菜单。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-010",
+      "title": "配置内容无效",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "precondition": "配置含非法模式、非法数字、越界 timeout 或无效默认项。",
+      "trigger": "boot 解析配置。",
+      "expectedBehavior": "不会越界或误启动不支持模式；按一致的安全降级策略处理。",
+      "detailToConfirm": "整份配置回退还是逐字段回退，以及未知键/重复键的处理规则，需明确，不能在草案中默认为用户已选。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-011",
+      "title": "配置字符串和文件长度边界",
+      "type": "边界",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "precondition": "title 或整份配置接近允许长度，含空串、截断行或不可识别字符。",
+      "trigger": "读取、解析并显示配置。",
+      "expectedBehavior": "不会缓冲区越界、无终止字符串读取或把截断内容解释成不同启动项；过长输入有明确拒绝/截断策略。",
+      "detailToConfirm": "具体长度与支持字符集沿用实现约束后列明；不引入任意 Unicode 支持承诺。",
+      "scopeBasis": "既有配置安全目标；长度/字符细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-012",
+      "title": "倒计时端点与输入同时发生",
+      "type": "边界",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "precondition": "timeout 为 0 或 30；或有效键接近倒计时结束时到达。",
+      "trigger": "自动选择与用户输入可能同一轮被处理。",
+      "expectedBehavior": "0/30 秒端点行为清楚；只做一次最终选择，不同时启动两项。",
+      "detailToConfirm": "零秒是否跳过菜单、同时发生时谁优先待确认。此处使用固件启动阶段等待，不要求第一阶段增加内核计时器。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-013",
+      "title": "有效 ELF 各段装载和 BSS 清零",
+      "type": "正常",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "precondition": "ELF64/x86-64 ET_EXEC 符合固定地址、文件和跨度限制。",
+      "trigger": "校验后装载 RX/RW/RO 段并准备入口。",
+      "expectedBehavior": "文件内容复制到正确位置，memsz 超过 filesz 的部分清零，入口落在允许执行区域；非装载段不被当代码执行，符号表存在本身不构成拒绝理由。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-014",
+      "title": "内核文件缺失或读取失败",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-03",
+        "BOOT-01",
+        "DIAG-01"
+      ],
+      "precondition": "指定内核不存在、不可读或只读到部分文件。",
+      "trigger": "boot 尝试加载内核。",
+      "expectedBehavior": "报告内核装载失败且不跳转；已读到部分内容不能作为完整 ELF 继续启动。",
+      "detailToConfirm": "失败后的菜单/退出方式待明确；不自动加载未经确认的替代内核。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-015",
+      "title": "ELF 头或表范围损坏",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "precondition": "魔数、位数、架构、类型、程序头长度/数量/偏移错误，或整数运算可能溢出。",
+      "trigger": "完整解析 ELF。",
+      "expectedBehavior": "在复制目标内存之前拒绝不合法镜像；不得在文件外读取或用溢出结果通过校验。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-016",
+      "title": "ELF 段和入口不合法",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "precondition": "段重叠、filesz 大于 memsz、段越过文件/目标范围、入口不在可执行段，或地址对齐不合法。",
+      "trigger": "校验装载段及入口。",
+      "expectedBehavior": "拒绝不合法镜像，保留原目标内存不被部分写坏；拒绝原因能定位到相应约束。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-017",
+      "title": "镜像请求不支持的装载方式或权限",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-03",
+        "MEM-02"
+      ],
+      "precondition": "镜像要求 ET_DYN、PT_DYNAMIC、重定位、动态链接、任意地址，或不符合约定的段权限组合。",
+      "trigger": "解析镜像并准备页权限。",
+      "expectedBehavior": "仅接受本条固定地址 ET_EXEC 支持范围；拒绝不支持方式和不安全权限，不能悄悄按普通 ET_EXEC 运行。",
+      "detailToConfirm": "禁止的权限组合须与实际固定格式定义一致；带符号表不等于动态链接。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-018",
+      "title": "64 MiB 装载区被占用",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-03",
+        "MEM-01"
+      ],
+      "precondition": "要求的固定物理范围与固件、已有分配或保留对象冲突。",
+      "trigger": "AllocateAddress 请求该区域。",
+      "expectedBehavior": "拒绝本次装载，不覆盖原有内容；不会自行换地址假装符合固定地址 ABI。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-019",
+      "title": "文件和装载跨度处于限制端点",
+      "type": "边界",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "precondition": "文件大小在 4 MiB 上限附近，装载跨度在 8 MiB 上限附近。",
+      "trigger": "分别处理恰好上限及超过上限的镜像。",
+      "expectedBehavior": "满足其余条件且未超过上限的镜像可接受；超过上限明确拒绝；长度求和不溢出。",
+      "detailToConfirm": "需写清上限按总文件字节、装载段覆盖跨度计算，不能混用。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-020",
+      "title": "前面段有效但后面段失败",
+      "type": "异常",
+      "requirementIds": [
+        "BOOT-03",
+        "MEM-01"
+      ],
+      "precondition": "多段 ELF 的后段才暴露错误。",
+      "trigger": "先校验所有段，再决定是否装载。",
+      "expectedBehavior": "整份先验检查失败时不部分复制前段、不跳转入口；已取得的临时资源由约定失败清理路径处置。",
+      "detailToConfirm": "临时分配的回收或留待固件统一处理策略需明确。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-021",
+      "title": "仅 BSP 建立基本运行环境",
+      "type": "正常",
+      "requirementIds": [
+        "CPU-04",
+        "BOOT-01"
+      ],
+      "precondition": "内核刚取得控制权。",
+      "trigger": "BSP 设置内核栈、GDT/IDT、必要 TSS/IST 和约定 CPU 状态。",
+      "expectedBehavior": "不用 AP 启动、IPI、多核并发或内核定时中断即可进入稳定运行；表与栈引用均指向有效的内核持有内存。",
+      "detailToConfirm": "必要 CPU 状态清单待细化；AP 的真机安全处置仍属于后续明确要求，不能被本场景默认为已验证。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-022",
+      "title": "必要 CPU 能力缺失或控制状态不符",
+      "type": "异常",
+      "requirementIds": [
+        "CPU-04",
+        "MEM-02",
+        "DIAG-01"
+      ],
+      "precondition": "CPU 不具备所选实现所需能力，或启动时寄存器状态与内核预期不同。",
+      "trigger": "建立页保护和异常处理前检查并规范化状态。",
+      "expectedBehavior": "可纠正的状态按约定建立；关键能力不满足时明确停止，不在保护未生效的状态下继续并声称成功。",
+      "detailToConfirm": "建议清单包含长模式前提、CR0.WP、NX 所需能力/EFER.NXE、相关 CR4 位及 IF 策略；最终按选定实现确认，不能默加 SIMD、XSAVE 或 VMX 门槛。",
+      "scopeBasis": "CPU 必要状态目标已定；能力清单与处理细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-023",
+      "title": "切表与开关中断的初始化边界",
+      "type": "边界",
+      "requirementIds": [
+        "CPU-04",
+        "MEM-02",
+        "DIAG-01"
+      ],
+      "precondition": "处于 GDT/IDT/TSS/CR3 和栈的建立或切换过程中。",
+      "trigger": "按定义顺序推进初始化；异常或外部事件在允许的时刻到达。",
+      "expectedBehavior": "不会启用指向未准备好入口或栈的状态；已承诺保护的时段能进入可用入口；退出固件保护到建立内核保护之间的责任边界明确。",
+      "detailToConfirm": "必须明确从哪个检查点起保证 DIAG-01 全能力；不得用笼统“整个 boot”暗示入口最早一条指令就具备完整异常恢复。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-024",
+      "title": "从内存图划定可分配与保留页",
+      "type": "正常",
+      "requirementIds": [
+        "MEM-01",
+        "BOOT-01"
+      ],
+      "precondition": "拥有最终内存图与内核、loader、boot 数据等保留对象清单。",
+      "trigger": "初始化物理页所有权。",
+      "expectedBehavior": "仅 EFI ConventionalMemory 且 WB 的合格完整页进入分配池；固件、loader、内核、启动信息等仍被持有的页不分配。",
+      "detailToConfirm": "固件回收不在本阶段现有单页目标内，不能自动把 Boot Services 类别都回收。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-025",
+      "title": "单页分配使用后释放",
+      "type": "正常",
+      "requirementIds": [
+        "MEM-01"
+      ],
+      "precondition": "至少有两页可用物理内存。",
+      "trigger": "连续分配页面、使用、释放后再次分配。",
+      "expectedBehavior": "在用页不重复发放；释放后页可再次由 allocator 管理，统计与所有权一致。",
+      "detailToConfirm": "本条不承诺自动清页、连续物理分配、heap 或并发。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-026",
+      "title": "没有空闲页及释放一页后的边界",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-01",
+        "CPU-04"
+      ],
+      "precondition": "可用页为零、只剩一页或已用尽。",
+      "trigger": "申请单页；在耗尽后释放一页再申请。",
+      "expectedBehavior": "资源耗尽以明确失败表示，不返回保留页或已分配页；释放后可恢复分配。启动必需内存不足时不能继续不完整初始化。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-027",
+      "title": "非法释放或重复释放",
+      "type": "异常",
+      "requirementIds": [
+        "MEM-01"
+      ],
+      "precondition": "传入未对齐、未分配、保留区、范围外或已释放的页。",
+      "trigger": "调用单页释放。",
+      "expectedBehavior": "拒绝非法释放且不破坏 allocator 状态；不得让保留页或他人仍在用的页进入空闲池。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-028",
+      "title": "稀疏内存图与坏描述符",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-01",
+        "BOOT-01"
+      ],
+      "precondition": "内存图带孔洞、多 extent、相邻区间，或长度/地址溢出、描述符重叠等异常输入。",
+      "trigger": "解析并构建可分配范围。",
+      "expectedBehavior": "合法孔洞和保留区域不被跨越分配；坏描述符不得制造虚假空闲页；地址与页数计算受边界约束。",
+      "detailToConfirm": "异常内存图是整体拒绝还是保守舍弃坏区间，需确认；不默称支持所有固件布局。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-029",
+      "title": "分配器元数据容量达到上限",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-01"
+      ],
+      "precondition": "extent 或页跟踪元数据接近实现容量。",
+      "trigger": "纳入更多可用区间或初始化元数据。",
+      "expectedBehavior": "不越界、不断言全部内存可用却遗漏跟踪；无法管理的页不发放。",
+      "detailToConfirm": "建议明确超限拒绝或保守只管理已完整登记区间及其提示；具体容量沿用实现后列明。",
+      "scopeBasis": "既有所有权安全目标；容量处理细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-030",
+      "title": "切入自有 CR3 后继续运行",
+      "type": "正常",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "BOOT-01"
+      ],
+      "precondition": "内核页表已准备好，代码、栈和必要交接数据仍需访问。",
+      "trigger": "切换到自有 CR3。",
+      "expectedBehavior": "指令、栈和必要数据访问持续有效，页表由内核持有；不依赖随后不再有效的固件映射。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-031",
+      "title": "合法访问遵守页面用途",
+      "type": "正常",
+      "requirementIds": [
+        "MEM-02"
+      ],
+      "precondition": "内核使用 RX text、RO/NX rodata、RW/NX data/stack。",
+      "trigger": "执行代码、读取只读数据、读写栈与可写数据。",
+      "expectedBehavior": "允许操作能完成；各页的可读写/执行权限符合用途，必要 supervisor 边界保持。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-032",
+      "title": "写入只读代码或数据页",
+      "type": "异常",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "DIAG-01"
+      ],
+      "precondition": "当前使用的映射为 RX text 或 RO rodata。",
+      "trigger": "BSP 在这些映射上执行写操作。",
+      "expectedBehavior": "触发与地址及访问方式相符的保护异常，记录故障现场并进入约定安全终态；不能因处于 Ring0 就绕过写保护。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-033",
+      "title": "在 NX 栈或数据页执行",
+      "type": "异常",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "DIAG-01"
+      ],
+      "precondition": "data/stack 映射设置为 NX。",
+      "trigger": "尝试从这些映射取指。",
+      "expectedBehavior": "阻止执行并提供与取指访问相符的故障信息；正常代码执行不受影响。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-034",
+      "title": "访问 null 或未映射空洞",
+      "type": "异常",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "DIAG-01"
+      ],
+      "precondition": "零页或约定空洞未映射。",
+      "trigger": "读取、写入或取指访问未映射地址。",
+      "expectedBehavior": "进入页故障处理，不静默访问物理零页或其他数据；明确故障地址与访问类型。",
+      "detailToConfirm": "取址为非 canonical 地址会走不同异常，诊断须保持区分，不能统一写作 #PF。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-035",
+      "title": "可执行物理页存在可写别名",
+      "type": "异常",
+      "requirementIds": [
+        "MEM-02"
+      ],
+      "precondition": "同一受管理代码物理页存在执行映射，以及高半区直映或其他候选别名。",
+      "trigger": "尝试使任一别名保持可写同时仍允许执行，或经候选别名写该页。",
+      "expectedBehavior": "不允许同一物理页通过不同映射同时可写和可执行；任何可执行映射存在时所有别名均不可写。不得只检查主代码虚拟地址。",
+      "detailToConfirm": "目标已确认；本场景不加入尚未进入本阶段的用户程序运行前提，可对内核管理代码页描述。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-036",
+      "title": "代码页从装载写入切到执行",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-02",
+        "BOOT-03"
+      ],
+      "precondition": "代码页处于装载/修改阶段，之后需要进入执行阶段。",
+      "trigger": "完成写入后建立执行权限；需要再次修改时反向切换。",
+      "expectedBehavior": "允许执行前撤销所有可写别名；再次写入前撤销所有执行映射。切换中也不出现同一物理页同时 W 与 X。",
+      "detailToConfirm": "不限实现方法，可取消别名或调整权限；不自动引入通用运行时代码热更新需求。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-037",
+      "title": "撤销权限后旧翻译不能继续授权",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04"
+      ],
+      "precondition": "曾经有可写或可执行映射，当前权限已撤销。",
+      "trigger": "在 BSP 上完成该权限转换后再次访问。",
+      "expectedBehavior": "旧 TLB 翻译不能让被撤销权限继续生效，满足当前物理页 W^X 目标。",
+      "detailToConfirm": "只覆盖单 BSP 所需同步；多核 shootdown 不纳入第一阶段。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-038",
+      "title": "framebuffer 映射范围和属性",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-02",
+        "DIAG-01"
+      ],
+      "precondition": "启动信息提供 framebuffer 地址、大小和属性；地址不必落在普通 RAM。",
+      "trigger": "内核在切 CR3 后映射并访问显示区域。",
+      "expectedBehavior": "仅映射经校验的显示范围，使用约定设备缓存属性，不把 MMIO 当空闲 RAM 或普通代码页；无有效 GOP 时允许禁用屏幕走降级。",
+      "detailToConfirm": "沿用当前 GOP UC 约束；具体格式/属性适用范围需记录，不能推断所有 GPU 兼容。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-039",
+      "title": "分配并读写释放 4 GiB 以上页面",
+      "type": "正常",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01",
+        "MEM-02"
+      ],
+      "precondition": "存在合格的 4 GiB 以上 RAM。",
+      "trigger": "从高地址范围获取页面，通过高半区直映读写，再释放。",
+      "expectedBehavior": "64 位地址完整保留，读写命中同一物理页且内容一致，释放回正确范围，不误落入低 4 GiB。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-040",
+      "title": "只有低于 4 GiB 的可用内存",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01"
+      ],
+      "precondition": "机器总内存较小或 4 GiB 以上没有合格可分配页。",
+      "trigger": "初始化高半区直映并按正常需求分配。",
+      "expectedBehavior": "低页路径仍正常；没有高页时明确没有该资源，不把地址零或低页伪装成高页，也不把“无高页”自动判成内核无法启动。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-041",
+      "title": "4 GiB 分界与跨边界区间",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01",
+        "MEM-02"
+      ],
+      "precondition": "有效页位于 4 GiB 前后，或描述符跨越该分界。",
+      "trigger": "换算物理地址、页号与直映虚拟地址。",
+      "expectedBehavior": "边界页归属清楚，不截成 32 位、不重叠发放、不跳过有效整页；映射访问与分配器一致。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-042",
+      "title": "直映可表示范围的端点",
+      "type": "边界",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-02"
+      ],
+      "precondition": "输入地址接近当前直映设计范围或超过可表示上限。",
+      "trigger": "构造直映地址或接纳内存范围。",
+      "expectedBehavior": "范围内转换不溢出；超出支持范围明确不接纳，不生成非 canonical/回绕地址。",
+      "detailToConfirm": "128 TiB 当前只属设计上限，须细化端点的开闭区间；1/32 TiB 合成输入及 128 TiB 设计不能写成已实测容量。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-043",
+      "title": "高地址内存孔洞及保留区",
+      "type": "异常",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01",
+        "MEM-02"
+      ],
+      "precondition": "高地址 RAM 中夹有孔洞、固件区或设备范围。",
+      "trigger": "高页分配和直映访问跨越相关区间。",
+      "expectedBehavior": "分配器不发放孔洞/保留页；“有直映地址公式”不等于该地址就是有效 RAM；不跨区域写入。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-044",
+      "title": "boot 和早期内核正常输出",
+      "type": "正常",
+      "requirementIds": [
+        "DIAG-01",
+        "BOOT-01"
+      ],
+      "precondition": "至少一个输出通道可用。",
+      "trigger": "在 boot、退出固件服务后及早期内核输出状态。",
+      "expectedBehavior": "输出能识别阶段且不依赖已经失效的固件控制台；有屏幕和串口时二者不互相阻塞或破坏。",
+      "detailToConfirm": "屏幕格式、最小诊断字段及可用通道规则需细化；不含 Windows 驱动接管后显示。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-045",
+      "title": "普通 CPU 异常记录现场",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "precondition": "异常入口与诊断设施已建立。",
+      "trigger": "发生约定的 0–31 异常，例如 #UD、#GP、#PF。",
+      "expectedBehavior": "报告向量、指令位置和可获得的关键现场；正确区分是否有硬件错误码及页故障地址，进入约定处理或安全终态。",
+      "detailToConfirm": "0–31 是入口范围，不保证每种异常都可用普通软件 int 等价触发；保留向量和特殊类型需要分别定义，不虚构统一异常语义。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-046",
+      "title": "普通故障处理失败形成双重故障",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04",
+        "MEM-02"
+      ],
+      "precondition": "普通异常路径的栈或入口条件失效，发生真正的 #DF 递送。",
+      "trigger": "CPU 转入双重故障入口。",
+      "expectedBehavior": "使用独立可用的应急栈/入口完成尽力诊断并安全停机，避免依赖已坏的普通栈继续递归。",
+      "detailToConfirm": "单纯执行 int 8 不等同真实 #DF。具体产生方式留到测试设计，不在本轮关联测试。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-047",
+      "title": "单次 NMI 到达",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "precondition": "处于本阶段承诺保护的运行时段。",
+      "trigger": "NMI 在普通运行或异常处理过程中到达。",
+      "expectedBehavior": "NMI 能安全保存最小必要现场，不依赖可屏蔽中断状态，不破坏正在处理的故障状态。",
+      "detailToConfirm": "本阶段将 NMI 作为终止性诊断还是允许返回，需要细化。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-048",
+      "title": "NMI 重复递送与早期入口重入风险",
+      "type": "边界",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "precondition": "已有 NMI/故障处理上下文，处于硬件允许再次递送或解除 NMI blocking 的关键边界。",
+      "trigger": "再次 NMI，或 NMI 处理中的异常使入口/栈面临重入。",
+      "expectedBehavior": "在可能覆盖旧栈帧之前保护状态，不能只依赖进入 C 之后才检查的 panic 标志；最终保留可用诊断并到安全终态。",
+      "detailToConfirm": "需尊重 x86 NMI blocking/IRET 语义，不能假定 NMI 可在任意指令无限自由嵌套；具体栈和入口方案待定。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-049",
+      "title": "256 向量均有安全兜底",
+      "type": "边界",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "precondition": "BSP IDT 已就绪。",
+      "trigger": "0–31 异常和 32–255 范围内意外/尚未实现的事件进入各自入口。",
+      "expectedBehavior": "不存在空缺的危险入口；0–31 按异常语义诊断，32–255 进入明确安全兜底；不把“兜底”表述成完整设备驱动或定时中断服务。",
+      "detailToConfirm": "错误码栈布局、门权限和特殊向量处理需符合真实递送语义；不要求用同一种注入方式遍历全部向量。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-050",
+      "title": "无屏幕时由串口诊断",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "precondition": "GOP 不存在、参数无效或初始化时已确定屏幕不可用，串口可用。",
+      "trigger": "正常或故障输出。",
+      "expectedBehavior": "禁用不安全屏幕写入，通过串口输出可用诊断并遵守安全终态；不因缺屏幕直接失去整个故障处理。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-051",
+      "title": "无串口时由屏幕诊断",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "precondition": "UART 缺失或初始化时已确定不可用，framebuffer 可用。",
+      "trigger": "正常或故障输出。",
+      "expectedBehavior": "通过屏幕输出可用诊断；串口失败不造成无限等待，不承诺真机必有串口。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-052",
+      "title": "两个输出通道都不可用",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "precondition": "GOP 和 UART 均无法安全使用。",
+      "trigger": "发生致命早期故障。",
+      "expectedBehavior": "尽力尝试可用诊断后进入安全停机，不因“必须显示画面”而反复访问坏设备；允许没有可见输出。",
+      "detailToConfirm": "",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-053",
+      "title": "屏幕已绑定后写入触发故障",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04",
+        "MEM-02"
+      ],
+      "precondition": "framebuffer 最初可用，运行中映射/设备访问失效。",
+      "trigger": "诊断打印过程中发生屏幕写故障。",
+      "expectedBehavior": "输出故障不无限递归；尽力转用仍安全的串口，若无法恢复则走最小故障路径并安全停机。",
+      "detailToConfirm": "如何识别/隔离坏写入、保留多少首个故障现场待设计；硬件完全失联时不承诺必然恢复或显示。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-054",
+      "title": "UART 存在但持续无法发送",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "precondition": "串口存在但发送状态卡住或一直未就绪。",
+      "trigger": "输出诊断字节。",
+      "expectedBehavior": "串口等待有界，不阻止屏幕或安全停机；失败时不进入无限轮询。",
+      "detailToConfirm": "具体超时/尝试预算是建议细化，可使用有界轮询，不要求内核计时器。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-055",
+      "title": "屏幕几何和绘制边界",
+      "type": "边界",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "precondition": "分辨率、pitch、像素格式、buffer 大小处于合法端点或彼此矛盾；文本到达最后一行/列。",
+      "trigger": "绑定 framebuffer 或绘制字符和换行。",
+      "expectedBehavior": "合法显示不越界；无效参数拒绝或禁用屏幕；地址乘加溢出和最后像素/行不损坏邻近内存。",
+      "detailToConfirm": "支持的像素格式、过小屏幕和滚屏/截断策略需确认；截图存在不能替代这些行为的验收。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-056",
+      "title": "panic 中再次出现异常",
+      "type": "边界",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "precondition": "已经在记录首个故障。",
+      "trigger": "诊断、符号处理或其他故障处理代码再次异常。",
+      "expectedBehavior": "不无限递归、不把坏栈继续当安全栈，尽量保留首个故障和二次故障标记，然后走最小安全终态。",
+      "detailToConfirm": "若已形成 #DF 或 NMI 重入，分别复用对应场景，不再重复建相同故障条目。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-057",
+      "title": "致命故障后的安全终态",
+      "type": "边界",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "precondition": "已完成或放弃尽力输出。",
+      "trigger": "处理程序结束本次致命故障路径。",
+      "expectedBehavior": "不返回故障指令反复触发，不继续普通启动或未完成的装载；无需外部调试器参与即可停在规定安全状态。",
+      "detailToConfirm": "明确“停机”的可观察定义及 NMI 等到达后的处置；不承诺从任意 CPU/硬件完全损坏状态恢复。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-058",
+      "title": "连接调试入口并控制内核",
+      "type": "正常",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "precondition": "选定支持环境启动调试模式。",
+      "trigger": "调试器连接，暂停并继续内核。",
+      "expectedBehavior": "能够确认连接的是当前内核并控制执行；不把归档、交付或测试报告是否齐全作为此功能判据。",
+      "detailToConfirm": "现有 QEMU GDB 是可用实现，GDB 不是用户规定的唯一方案；环境与接入方式待确认。",
+      "scopeBasis": "既定目标的场景化草案",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-059",
+      "title": "在交接与早期内核位置停住",
+      "type": "边界",
+      "requirementIds": [
+        "DIAG-02",
+        "BOOT-01",
+        "CPU-04"
+      ],
+      "precondition": "调试会话跨越 EBS、kernel_entry、自有栈切换和运行时入口。",
+      "trigger": "设置需要观察的停点并继续执行。",
+      "expectedBehavior": "能区分启动阶段并在选定的内核位置停止，看到与当前阶段一致的指令地址和栈位置。",
+      "detailToConfirm": "拟议调试细项；是否要求覆盖 EFI/boot 本身需确认，不能以此倒推已有内核调试目标未完成。",
+      "scopeBasis": "调试目标已定；停点范围建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-060",
+      "title": "断点与符号对应",
+      "type": "正常",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "precondition": "具有与当前镜像对应的符号信息。",
+      "trigger": "按符号或地址设置断点，观察命中位置。",
+      "expectedBehavior": "断点命中所指代码，地址可对应到正确符号；有符号/无符号方式边界清楚。",
+      "detailToConfirm": "拟议细项；源码行级调试和条件断点不自动包含。",
+      "scopeBasis": "调试目标已定；断点与符号细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-061",
+      "title": "单步查看寄存器和内存",
+      "type": "正常",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "precondition": "内核在可控制的停点。",
+      "trigger": "单步执行，读取寄存器及选定有效内存。",
+      "expectedBehavior": "执行进展、寄存器值和内存内容与当前暂停状态一致。",
+      "detailToConfirm": "单步和任意内存查看为待确认细项，不宣称已有专项通过，也不把缺专项测试当缺实现。",
+      "scopeBasis": "调试目标已定；能力细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-062",
+      "title": "无效调试地址或不匹配符号",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "precondition": "请求查看无效地址，或符号与当前镜像不匹配。",
+      "trigger": "读取内存或尝试符号定位。",
+      "expectedBehavior": "无效地址有清楚错误，不把无效数据当有效内容；符号不匹配不伪装为可靠定位，不因只读调试请求损坏目标。",
+      "detailToConfirm": "符号匹配检查由调试工具或流程提供均可，是否为本阶段强制细项待确认。",
+      "scopeBasis": "新增调试异常细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-063",
+      "title": "调试连接中断",
+      "type": "异常",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "precondition": "内核曾被调试器暂停或正在运行。",
+      "trigger": "连接断开，必要时重新连接。",
+      "expectedBehavior": "暂停/继续状态遵从明确策略，不出现用户未知的隐式执行或不可辨识状态。",
+      "detailToConfirm": "断线后保持暂停、继续或要求重启尚未选定；本场景为建议，不能先写成既定门槛。",
+      "scopeBasis": "新增调试异常细项建议",
+      "confirmationStatus": "draft"
+    },
+    {
+      "id": "DRAFT-MS1-064",
+      "title": "普通启动不依赖调试器连接",
+      "type": "边界",
+      "requirementIds": [
+        "DIAG-02",
+        "BOOT-01"
+      ],
+      "precondition": "以普通非调试模式启动。",
+      "trigger": "没有调试器连接。",
+      "expectedBehavior": "正常启动流程不因调试器未连接而停在调试等待；显式调试模式的等待可以是有意行为。",
+      "detailToConfirm": "调试/普通模式的启用约定需写清，不要求所有环境均有远程调试。",
+      "scopeBasis": "调试目标与启动目标的联动建议",
+      "confirmationStatus": "draft"
+    }
+  ],
+  "deferredScenarios": [
+    {
+      "id": "DRAFT-MS2-D01",
+      "title": "Ring3 访问高半区及 supervisor 内核映射被拒绝",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-02",
+        "USER-01"
+      ],
+      "milestoneId": "MS-02",
+      "reason": "MEM-03 原需求保留用户态拒绝目标，但 Ring3 已明确归第二阶段。第一阶段不执行用户程序来充当必选门槛。"
+    },
+    {
+      "id": "DRAFT-MS2-D02",
+      "title": "用户代码页与内核可写别名之间的 W^X 隔离",
+      "requirementIds": [
+        "MEM-02",
+        "USER-01"
+      ],
+      "milestoneId": "MS-02",
+      "reason": "同一物理代码页的 W^X 原则已确认且适用于所有相关阶段；涉及用户程序运行的具体场景放第二阶段。本阶段用内核受管理代码页建立并要求同一原则。"
+    }
+  ],
+  "legacyScenarioHandling": [
+    {
+      "id": "SC-BOOT-01-01",
+      "requirementId": "BOOT-01",
+      "name": "UEFI → 独立 ELF kernel 交接",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。"
+    },
+    {
+      "id": "SC-BOOT-02-01",
+      "requirementId": "BOOT-02",
+      "name": "可配置启动菜单与安全降级",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。"
+    },
+    {
+      "id": "SC-BOOT-03-01",
+      "requirementId": "BOOT-03",
+      "name": "kernel ELF 校验与固定地址装载",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。"
+    },
+    {
+      "id": "SC-MEM-01-01",
+      "requirementId": "MEM-01",
+      "name": "保守物理页所有权与单页分配",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。"
+    },
+    {
+      "id": "SC-MEM-02-01",
+      "requirementId": "MEM-02",
+      "name": "自有 CR3、W^X 与权限故障",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。"
+    },
+    {
+      "id": "SC-MEM-03-01",
+      "requirementId": "MEM-03",
+      "name": ">4 GiB RAM 与高半区直映",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。"
+    },
+    {
+      "id": "SC-DIAG-01-01",
+      "requirementId": "DIAG-01",
+      "name": "串口、framebuffer panic 与故障诊断",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。"
+    },
+    {
+      "id": "SC-DIAG-02-01",
+      "requirementId": "DIAG-02",
+      "name": "断点调试、冻结产物与独立验收",
+      "treatment": "保留历史原条及现有状态/关系；本草案拆出的场景不继承原 PASS 或实现状态。 原名称混有冻结产物/独立验收；新功能场景仅描述调试能力，旧记录待后续另行整理，不在本轮迁移测试。"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "Q1",
+      "topic": "第一阶段运行环境",
+      "suggestion": "以当前 x86-64 QEMU/OVMF 为场景基线，物理固件平台另列确认清单，不声称全固件兼容。",
+      "affected": [
+        "DRAFT-MS1-001",
+        "DRAFT-MS1-002"
+      ]
+    },
+    {
+      "id": "Q2",
+      "topic": "失败终态和有限重试",
+      "suggestion": "错误一律不能继续危险启动；在仍能安全回到菜单的阶段可回菜单，其余安全终止。扩容、EBS 和串口等待均有界，具体预算后定。",
+      "affected": [
+        "DRAFT-MS1-003",
+        "DRAFT-MS1-004",
+        "DRAFT-MS1-005",
+        "DRAFT-MS1-014",
+        "DRAFT-MS1-054"
+      ]
+    },
+    {
+      "id": "Q3",
+      "topic": "菜单策略细节",
+      "suggestion": "明确缺配置/坏配置采用哪一安全默认项、整份或逐字段回退、timeout=0 与临界按键优先级；不增加内核计时器目标。",
+      "affected": [
+        "DRAFT-MS1-008",
+        "DRAFT-MS1-009",
+        "DRAFT-MS1-010",
+        "DRAFT-MS1-012"
+      ]
+    },
+    {
+      "id": "Q4",
+      "topic": "CPU 和故障保护起点",
+      "suggestion": "列必要 CPU 状态、异常入口就绪检查点、NMI 可返回还是终止，以及故障停机的可观察定义。",
+      "affected": [
+        "DRAFT-MS1-021",
+        "DRAFT-MS1-022",
+        "DRAFT-MS1-023",
+        "DRAFT-MS1-047",
+        "DRAFT-MS1-048",
+        "DRAFT-MS1-057"
+      ]
+    },
+    {
+      "id": "Q5",
+      "topic": "内存保护范围",
+      "suggestion": "保留已确认物理页全部别名 W^X；仅做本阶段受管理代码页和 BSP 权限生效，不附加通用动态映射或多核 shootdown。Ring3 拒绝场景留第二阶段。",
+      "affected": [
+        "DRAFT-MS1-035",
+        "DRAFT-MS1-036",
+        "DRAFT-MS1-037",
+        "DRAFT-MS2-D01",
+        "DRAFT-MS2-D02"
+      ]
+    },
+    {
+      "id": "Q6",
+      "topic": "内核调试细项",
+      "suggestion": "连接控制是现有目标；断点/单步、寄存器/内存、符号、早期停点和错误/断线处理逐项确认。GDB 非强制，现有目标完成状态不因新增建议倒退。",
+      "affected": [
+        "DRAFT-MS1-058",
+        "DRAFT-MS1-059",
+        "DRAFT-MS1-060",
+        "DRAFT-MS1-061",
+        "DRAFT-MS1-062",
+        "DRAFT-MS1-063",
+        "DRAFT-MS1-064"
+      ]
+    }
+  ]
+}

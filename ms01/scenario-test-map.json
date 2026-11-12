@@ -1,0 +1,1144 @@
+{
+  "boardVersion": 22,
+  "boardCommit": "c1218f0bffb513e145ea7b0710cfca0fd42cd652",
+  "boardURL": "https://syle-ept-board.azureimpala2.chatgpt.site",
+  "scenarioCount": 64,
+  "warning": "Automation links do not change candidate confirmation or prove every possible subcase. See component coverage documents and exact final run report.",
+  "scenarios": [
+    {
+      "scenarioId": "SC-M1-BOOT-01",
+      "sourceDraftId": "DRAFT-MS1-001",
+      "title": "固件启动 boot",
+      "selectionStatus": "selected_draft",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "smoke"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-BOOT-02",
+      "sourceDraftId": "DRAFT-MS1-002",
+      "title": "boot 装载内核并完成交接",
+      "selectionStatus": "selected_draft",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-01",
+        "BOOT-03",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "smoke",
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-BOOT-03",
+      "sourceDraftId": "DRAFT-MS1-003",
+      "title": "内存图缓冲不足时扩容并完整获取",
+      "selectionStatus": "selected_draft",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-01",
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-exit"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Mocked firmware callbacks execute actual production transaction, not physical firmware fault injection."
+    },
+    {
+      "scenarioId": "SC-M1-BOOT-04",
+      "sourceDraftId": "DRAFT-MS1-004",
+      "title": "map key 失效时有限重试",
+      "selectionStatus": "selected_draft",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-exit"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Three EBS attempts selected as technical policy, not newly user-confirmed."
+    },
+    {
+      "scenarioId": "SC-M1-BOOT-05",
+      "sourceDraftId": "DRAFT-MS1-005",
+      "title": "交接持续失败时报告错误并阻止入核",
+      "selectionStatus": "selected_draft",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-01",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-exit",
+        "efi-failure"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Actual EFI adapter failure path is exercised by QEMU firmware-return injection; not a physical firmware failure."
+    },
+    {
+      "scenarioId": "SC-M1-BOOT-06",
+      "sourceDraftId": "DRAFT-MS1-006",
+      "title": "必需启动信息校验与可选 GOP 降级",
+      "selectionStatus": "selected_draft",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-01",
+        "CPU-04",
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-abi",
+        "cpu-boundary"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Loader-owned boot record must itself be readable; metadata validation cannot prove arbitrary pointer accessibility."
+    },
+    {
+      "scenarioId": "SC-M1-007",
+      "sourceDraftId": "DRAFT-MS1-007",
+      "title": "配置正常且主动选择启动项",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-policy",
+        "boot-chain"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-008",
+      "sourceDraftId": "DRAFT-MS1-008",
+      "title": "无人输入或没有键盘",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-policy"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Firmware callback mock for missing keyboard; QEMU no-keyboard hardware matrix not claimed."
+    },
+    {
+      "scenarioId": "SC-M1-009",
+      "sourceDraftId": "DRAFT-MS1-009",
+      "title": "配置文件缺失或无法读取",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-policy",
+        "boot-chain"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-010",
+      "sourceDraftId": "DRAFT-MS1-010",
+      "title": "配置内容无效",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-policy",
+        "boot-chain"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-011",
+      "sourceDraftId": "DRAFT-MS1-011",
+      "title": "配置字符串和文件长度边界",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-policy"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-012",
+      "sourceDraftId": "DRAFT-MS1-012",
+      "title": "倒计时端点与输入同时发生",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-policy"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Final poll before 30 seconds wins; at expiry default wins. Technical policy remains draft."
+    },
+    {
+      "scenarioId": "SC-M1-013",
+      "sourceDraftId": "DRAFT-MS1-013",
+      "title": "有效 ELF 各段装载和 BSS 清零",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-elf"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-014",
+      "sourceDraftId": "DRAFT-MS1-014",
+      "title": "内核文件缺失或读取失败",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03",
+        "BOOT-01",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-read",
+        "boot-chain"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-015",
+      "sourceDraftId": "DRAFT-MS1-015",
+      "title": "ELF 头或表范围损坏",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-elf"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-016",
+      "sourceDraftId": "DRAFT-MS1-016",
+      "title": "ELF 段和入口不合法",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-elf"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-017",
+      "sourceDraftId": "DRAFT-MS1-017",
+      "title": "镜像请求不支持的装载方式或权限",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03",
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-elf"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-018",
+      "sourceDraftId": "DRAFT-MS1-018",
+      "title": "64 MiB 装载区被占用",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03",
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-elf"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Actual production allocation/load seam with injected allocator conflict, not physical reservation conflict."
+    },
+    {
+      "scenarioId": "SC-M1-019",
+      "sourceDraftId": "DRAFT-MS1-019",
+      "title": "文件和装载跨度处于限制端点",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-elf",
+        "boot-read"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-020",
+      "sourceDraftId": "DRAFT-MS1-020",
+      "title": "前面段有效但后面段失败",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "BOOT-03",
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "boot-elf"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-021",
+      "sourceDraftId": "DRAFT-MS1-021",
+      "title": "仅 BSP 建立基本运行环境",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "CPU-04",
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "smoke",
+        "diagnostics",
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "BSP only. No AP startup, timer or multicore completion claim."
+    },
+    {
+      "scenarioId": "SC-M1-022",
+      "sourceDraftId": "DRAFT-MS1-022",
+      "title": "必要 CPU 能力缺失或控制状态不符",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "CPU-04",
+        "MEM-02",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "cpu-boundary",
+        "diagnostics",
+        "paging-boundaries"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Current required CPU contract only, not SIMD/XSAVE or VMX support. Supplement paging runner is blocked/unverified; prior component evidence is separate."
+    },
+    {
+      "scenarioId": "SC-M1-023",
+      "sourceDraftId": "DRAFT-MS1-023",
+      "title": "切表与开关中断的初始化边界",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "CPU-04",
+        "MEM-02",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "cpu-boundary",
+        "diagnostics",
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Full diagnostics guarantee starts after exceptions_init installs own IDT; inherited firmware transition window remains explicit."
+    },
+    {
+      "scenarioId": "SC-M1-024",
+      "sourceDraftId": "DRAFT-MS1-024",
+      "title": "从内存图划定可分配与保留页",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-01",
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-025",
+      "sourceDraftId": "DRAFT-MS1-025",
+      "title": "单页分配使用后释放",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm",
+        "high-memory"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-026",
+      "sourceDraftId": "DRAFT-MS1-026",
+      "title": "没有空闲页及释放一页后的边界",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm",
+        "paging-boundaries"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Prior component evidence recorded injected allocation failure without partial CR3 publication; final supplement paging runner is blocked/unverified. See SUPPLEMENT_R2.md."
+    },
+    {
+      "scenarioId": "SC-M1-027",
+      "sourceDraftId": "DRAFT-MS1-027",
+      "title": "非法释放或重复释放",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-028",
+      "sourceDraftId": "DRAFT-MS1-028",
+      "title": "稀疏内存图与坏描述符",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-01",
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-029",
+      "sourceDraftId": "DRAFT-MS1-029",
+      "title": "分配器元数据容量达到上限",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Implementation metadata limits only, not arbitrary firmware complexity."
+    },
+    {
+      "scenarioId": "SC-M1-030",
+      "sourceDraftId": "DRAFT-MS1-030",
+      "title": "切入自有 CR3 后继续运行",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "smoke",
+        "memory-faults"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-031",
+      "sourceDraftId": "DRAFT-MS1-031",
+      "title": "合法访问遵守页面用途",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "smoke",
+        "paging-alias"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-032",
+      "sourceDraftId": "DRAFT-MS1-032",
+      "title": "写入只读代码或数据页",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "memory-faults",
+        "wx-alias",
+        "diagnostics",
+        "paging-boundaries"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Final supplement precise frame runner is blocked/unverified; baseline and prior component evidence are separate."
+    },
+    {
+      "scenarioId": "SC-M1-033",
+      "sourceDraftId": "DRAFT-MS1-033",
+      "title": "在 NX 栈或数据页执行",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "memory-faults",
+        "diagnostics",
+        "paging-boundaries"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Final supplement precise frame runner is blocked/unverified; baseline and prior component evidence are separate."
+    },
+    {
+      "scenarioId": "SC-M1-034",
+      "sourceDraftId": "DRAFT-MS1-034",
+      "title": "访问 null 或未映射空洞",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "memory-faults",
+        "diagnostics",
+        "paging-boundaries"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Noncanonical fetch RIP assertion failed; final paging runner was platform-blocked. No QEMU bug or complete read/write/fetch acceptance is claimed."
+    },
+    {
+      "scenarioId": "SC-M1-035",
+      "sourceDraftId": "DRAFT-MS1-035",
+      "title": "可执行物理页存在可写别名",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "paging-alias",
+        "wx-alias"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Owned kernel tree and inherited bootstrap user tree. No arbitrary external roots or EPT promise."
+    },
+    {
+      "scenarioId": "SC-M1-036",
+      "sourceDraftId": "DRAFT-MS1-036",
+      "title": "代码页从装载写入切到执行",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02",
+        "BOOT-03"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "paging-alias",
+        "wx-alias"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "One-way NX writable loading to sealed executable publication; reverse/JIT transition is unsupported and outside the chosen implementation."
+    },
+    {
+      "scenarioId": "SC-M1-037",
+      "sourceDraftId": "DRAFT-MS1-037",
+      "title": "撤销权限后旧翻译不能继续授权",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "wx-alias"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "BSP invalidation only, not shootdown across running APs."
+    },
+    {
+      "scenarioId": "SC-M1-038",
+      "sourceDraftId": "DRAFT-MS1-038",
+      "title": "framebuffer 映射范围和属性",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-02",
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "console",
+        "diagnostics",
+        "paging-boundaries"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Real PTE/endpoints have prior component evidence; final supplement paging runner is blocked/unverified."
+    },
+    {
+      "scenarioId": "SC-M1-039",
+      "sourceDraftId": "DRAFT-MS1-039",
+      "title": "分配并读写释放 4 GiB 以上页面",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01",
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "high-memory"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "5/8 GiB QEMU TCG access, not bare metal."
+    },
+    {
+      "scenarioId": "SC-M1-040",
+      "sourceDraftId": "DRAFT-MS1-040",
+      "title": "只有低于 4 GiB 的可用内存",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "high-memory"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-041",
+      "sourceDraftId": "DRAFT-MS1-041",
+      "title": "4 GiB 分界与跨边界区间",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01",
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm",
+        "paging-alias"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "4 GiB exact/cross-boundary inputs are host synthetic tests; QEMU 5/8 GiB runs separately prove real high-frame accesses."
+    },
+    {
+      "scenarioId": "SC-M1-042",
+      "sourceDraftId": "DRAFT-MS1-042",
+      "title": "直映可表示范围的端点",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm",
+        "paging-alias"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "128 TiB exclusive design/host-test cap; not RAM capacity tested by QEMU."
+    },
+    {
+      "scenarioId": "SC-M1-043",
+      "sourceDraftId": "DRAFT-MS1-043",
+      "title": "高地址内存孔洞及保留区",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "MEM-03",
+        "MEM-01",
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "pmm"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Sparse 1/32 TiB synthetic maps; not native hardware RAM capacity."
+    },
+    {
+      "scenarioId": "SC-M1-044",
+      "sourceDraftId": "DRAFT-MS1-044",
+      "title": "boot 和早期内核正常输出",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "smoke",
+        "boot-chain"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-045",
+      "sourceDraftId": "DRAFT-MS1-045",
+      "title": "普通 CPU 异常记录现场",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "vector-layout",
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Actual DE/BP/UD/GP/PF/DF/NMI representatives plus static all-stub/frame inspection; no claim all 32 exception types individually triggered."
+    },
+    {
+      "scenarioId": "SC-M1-046",
+      "sourceDraftId": "DRAFT-MS1-046",
+      "title": "普通故障处理失败形成双重故障",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04",
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Actual hardware #DF from failed exception-stack delivery; terminal handling only, not recovery."
+    },
+    {
+      "scenarioId": "SC-M1-047",
+      "sourceDraftId": "DRAFT-MS1-047",
+      "title": "单次 NMI 到达",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "diagnostics",
+        "nmi-overlap"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Real QEMU NMI during ordinary exception handling at selected checkpoints; original frame compared byte-for-byte. Not all microtimings."
+    },
+    {
+      "scenarioId": "SC-M1-048",
+      "sourceDraftId": "DRAFT-MS1-048",
+      "title": "NMI 重复递送与早期入口重入风险",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "diagnostics",
+        "nmi-overlap"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Real ordinary-fault/NMI overlap, second NMI requests under architectural blocking, and separate synthetic guard test; no timing-exhaustive NMI proof."
+    },
+    {
+      "scenarioId": "SC-M1-049",
+      "sourceDraftId": "DRAFT-MS1-049",
+      "title": "256 向量均有安全兜底",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "vector-layout",
+        "diagnostics",
+        "fallback-vectors"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "All 256 gates/stubs checked; every fallback vector 32–255 receives an actual software INT, with explicit debugger rearming between fatal test cases. This is not hardware IRQ/controller coverage or production recovery; first32 exceptions remain representative."
+    },
+    {
+      "scenarioId": "SC-M1-050",
+      "sourceDraftId": "DRAFT-MS1-050",
+      "title": "无屏幕时由串口诊断",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "console",
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-051",
+      "sourceDraftId": "DRAFT-MS1-051",
+      "title": "无串口时由屏幕诊断",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "uart",
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-052",
+      "sourceDraftId": "DRAFT-MS1-052",
+      "title": "两个输出通道都不可用",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-053",
+      "sourceDraftId": "DRAFT-MS1-053",
+      "title": "屏幕已绑定后写入触发故障",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04",
+        "MEM-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "console",
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-054",
+      "sourceDraftId": "DRAFT-MS1-054",
+      "title": "UART 存在但持续无法发送",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "uart",
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Production C UART loop has injected stuck-status tests; emergency NMI UART budget is static-checked. An additional runtime status-injection attempt was blocked before guest execution by QMP Unix socket EPERM and is not an added acceptance gate.",
+      "additionalTestWork": {
+        "suiteId": "nmi-uart-budget",
+        "status": "not_run_blocked",
+        "scope": "Optional deeper runtime validation of emergency NMI UART poll budget; not a new confirmed acceptance gate.",
+        "reason": "Private QMP Unix socket creation returned EPERM before guest execution; no alternate route attempted."
+      }
+    },
+    {
+      "scenarioId": "SC-M1-055",
+      "sourceDraftId": "DRAFT-MS1-055",
+      "title": "屏幕几何和绘制边界",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "console",
+        "diagnostics"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-056",
+      "sourceDraftId": "DRAFT-MS1-056",
+      "title": "panic 中再次出现异常",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "diagnostics",
+        "nmi-overlap"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage.",
+      "additionalTestWork": {
+        "suiteId": "nmi-uart-budget",
+        "status": "not_run_blocked",
+        "scope": "Optional deeper runtime validation of emergency NMI UART poll budget; not a new confirmed acceptance gate.",
+        "reason": "Private QMP Unix socket creation returned EPERM before guest execution; no alternate route attempted."
+      }
+    },
+    {
+      "scenarioId": "SC-M1-057",
+      "sourceDraftId": "DRAFT-MS1-057",
+      "title": "致命故障后的安全终态",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "diagnostics",
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Fatal paths stop with IF=0 and HLT, never IRET; no recoverable-exception or watchdog-restart policy is inferred."
+    },
+    {
+      "scenarioId": "SC-M1-058",
+      "sourceDraftId": "DRAFT-MS1-058",
+      "title": "连接调试入口并控制内核",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-059",
+      "sourceDraftId": "DRAFT-MS1-059",
+      "title": "在交接与早期内核位置停住",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-02",
+        "BOOT-01",
+        "CPU-04"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-060",
+      "sourceDraftId": "DRAFT-MS1-060",
+      "title": "断点与符号对应",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-061",
+      "sourceDraftId": "DRAFT-MS1-061",
+      "title": "单步查看寄存器和内存",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    },
+    {
+      "scenarioId": "SC-M1-062",
+      "sourceDraftId": "DRAFT-MS1-062",
+      "title": "无效调试地址或不匹配符号",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "debugger"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Exact image hash and live code bytes checked; normal GDB memory error. No universal debugger symbol matching guarantee."
+    },
+    {
+      "scenarioId": "SC-M1-063",
+      "sourceDraftId": "DRAFT-MS1-063",
+      "title": "调试连接中断",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-02"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "debugger",
+        "debugger-abrupt"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Explicit detach and actual SIGKILL/TCP-close in stopped/running states tested for this QEMU build; no cross-debugger universal policy is assumed."
+    },
+    {
+      "scenarioId": "SC-M1-064",
+      "sourceDraftId": "DRAFT-MS1-064",
+      "title": "普通启动不依赖调试器连接",
+      "selectionStatus": "candidate",
+      "detailStatus": "needs_confirmation",
+      "requirementIds": [
+        "DIAG-02",
+        "BOOT-01"
+      ],
+      "automationImplemented": true,
+      "suiteIds": [
+        "debugger",
+        "smoke"
+      ],
+      "evidenceStatus": "execution_results_are_separate",
+      "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
+    }
+  ]
+}

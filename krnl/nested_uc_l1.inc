@@ -1,0 +1,57 @@
+    mov %rax,%r8
+    mov 0xc820,%rsi
+    cmp $1,%rsi
+    ja .Lnested_fail
+    mov $0x4402,%ecx
+    vmread %rcx,%rax
+    jbe .Lnested_fail
+    cmp $18,%rax
+    jne .Lnested_fail
+    mov $0x681e,%ecx
+    vmread %rcx,%r9
+    jbe .Lnested_fail
+    test %rsi,%rsi
+    jnz .Lnested_uc_final
+    cmp $0x77,%r8
+    jne .Lnested_fail
+    mov $0xf000,%edi /* L1 direct mapping also admitted UC by the monitor */
+    cmpq $0x77,(%rdi)
+    jne .Lnested_fail
+    lea nested_uc_warm_call(%rip),%rdx
+    cmp %rdx,%r9
+    jne .Lnested_fail
+    mov $0x2804,%ecx /* guest IA32_PAT */
+    vmread %rcx,%rax
+    jbe .Lnested_fail
+    movabs $0x0606060606060006,%rdx
+    cmp %rdx,%rax
+    jne .Lnested_fail
+    mov $0x440c,%ecx
+    vmread %rcx,%rax
+    jbe .Lnested_fail
+    cmp $3,%rax
+    jne .Lnested_fail
+    mov $0xc830,%ebx
+    mov $1,%eax
+    invept (%rbx),%rax
+    jbe .Lnested_fail
+    lea 3(%r9),%rax
+    mov $0x681e,%ecx
+    vmwrite %rax,%rcx
+    jbe .Lnested_fail
+    incq 0xc820
+    mov $0x30000,%edi
+    mov $0x31000,%esi
+    vmresume
+    jmp .Lnested_fail
+.Lnested_uc_final:
+    cmp $0x99,%r8
+    jne .Lnested_fail
+    mov $0xf000,%edi
+    cmpq $0x99,(%rdi)
+    jne .Lnested_fail
+    lea nested_uc_done_call(%rip),%rdx
+    cmp %rdx,%r9
+    jne .Lnested_fail
+    incq 0xc820
+    jmp .Lnested_done

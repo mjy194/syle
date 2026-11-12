@@ -1,0 +1,15 @@
+    cmp $0x99,%rax
+    jne .Lnested_fail
+    mov $0x4402,%ecx
+    vmread %rcx,%rax
+    jbe .Lnested_fail
+    cmp $18,%rax
+    jne .Lnested_fail
+    mov $0x2804,%ecx
+    vmread %rcx,%rax
+    jbe .Lnested_fail
+    movabs $0x0606060606060006,%rdx
+    cmp %rdx,%rax
+    jne .Lnested_fail
+    incq 0xc820
+    jmp .Lnested_done
