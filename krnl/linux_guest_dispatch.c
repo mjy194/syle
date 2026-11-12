@@ -1,5 +1,6 @@
 #include "linux_guest_dispatch.h"
 #include "linux_i8042_absent.h"
+#include "linux_pic04_idle.h"
 #include "linux_guest_manager.h"
 #include "linux_guest_snapshot.h"
 #include "linux_cpu_commit.h"
@@ -17,7 +18,7 @@
 #include "linux_misc_features.h"
 bool lgd_apic_now(void*p,uint64_t*out){
  struct lgd_context*d=p;if(!d||!out||d->failed||d->ticks>UINT64_MAX/1000||
- (d->clock_staged&&(!d->busy||(!d->idle_staged?d->staged_tick!=d->ticks+1:(!d->config.legacy_idle_advance||!d->config.legacy_pic_enabled||d->staged_tick<=d->ticks||d->staged_tick-d->ticks>65536))||d->staged_tick>UINT64_MAX/1000)))return false;
+ (d->clock_staged&&(!d->busy||(!d->idle_staged?d->staged_tick!=d->ticks+1:(!d->config.legacy_idle_advance||!(d->config.legacy_pic_enabled||d->config.legacy_pic04_enabled)||d->staged_tick<=d->ticks||d->staged_tick-d->ticks>65536))||d->staged_tick>UINT64_MAX/1000)))return false;
  *out=(d->clock_staged?d->staged_tick:d->ticks)*1000;return true;
 }
 static bool canonical(uint64_t x){return (x>>47)==0||(x>>47)==0x1ffff;}
@@ -103,7 +104,7 @@ static bool msr(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64
 bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  struct lgd_context*d=p;
  if(!d||!d->configured||!d->ready||d->failed||d->busy||d->entry_inflight)return false;
- d->busy=true;bool ok=false;struct pt0 staged={0};struct pcp ports={0};
+ d->busy=true;bool ok=false;struct pt0 staged={0};struct pcp ports={0};struct lpd_domain domain={0};unsigned idle_reason=0;
  if(!s||!s->prepared||s->failed||!s->state.ready||!s->state.guest_valid||s->state.host_dirty||
     !s->platform.read_field||!s->hop.vmwrite||!s->hop.invept||(d->session&&d->session!=s)||
     d->exits>=d->config.max_exits)goto done;
@@ -113,6 +114,10 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
   * emulation or true return that could authorize entry N+1. */
  if(d->exits==d->config.max_exits||d->ticks>=UINT64_MAX/1000||d->clock_staged)goto done;
  d->staged_tick=d->ticks+1;d->clock_staged=true;
+ if(d->config.legacy_pic04_enabled){
+  if(!d->pic04_run.ready||d->pic04_run.failed||d->pic04_run.inflight)goto done;
+  domain=d->pic04;lpd_bind(&domain);if(!lpd_sync(&domain))goto done;
+ }
  if(d->config.legacy_pic_enabled){
   if(!d->legacy_initialized||d->legacy.failed||d->legacy.inflight)goto done;
   staged=d->legacy.timer;ports=d->ports;ports.master=&staged.pic;
@@ -122,17 +127,24 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  if(!rd(s,0x4402,&reason)||reason!=supplied||reason>UINT16_MAX||!rd(s,0x681e,&rip)||
     !canonical(rip)||!rd(s,0x6400,&q)||!rd(s,0x440c,&len)||!rd(s,0x0802,&cs)||(cs&3)||
     !rd(s,0x4408,&vector)||vector||!rd(s,0x4016,&event))goto done;
- if(reason==52&&d->config.legacy_idle_advance){
+ if(reason==52&&d->config.legacy_idle_advance&&!d->config.legacy_pic04_enabled){
   struct lip_idle g={.reason=reason,.event=event,.vector=vector,
    .owner=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending||d->bp.pending||d->high==LHP_PENDING||d->legacy.timer.pic.reserved||d->legacy.irq.event.phase!=LEI_IDLE};
   if(!rd(s,0x4826,&g.activity)||!rd(s,0x6820,&g.flags)||!rd(s,0x4824,&g.blocking)||!rd(s,0x4018,&g.error)||!rd(s,0x401a,&g.length)||!lip_plan(&staged,d->ticks,&g,&d->staged_tick))goto done;
   d->idle_staged=d->staged_tick!=d->ticks+1;
  }
+ if(reason==52&&d->config.legacy_idle_advance&&d->config.legacy_pic04_enabled){
+  struct lip_idle g={.reason=reason,.event=event,.vector=vector,
+   .owner=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending||d->bp.pending||d->high==LHP_PENDING||domain.master.reserved.serial||d->pic04_run.irq.event.phase!=LEI_IDLE};
+  if(!rd(s,0x4826,&g.activity)||!rd(s,0x6820,&g.flags)||!rd(s,0x4824,&g.blocking)||!rd(s,0x4018,&g.error)||!rd(s,0x401a,&g.length)||!lpi_plan(&domain,d->ticks,&g,&d->staged_tick,&idle_reason))goto done;
+  d->idle_staged=d->staged_tick!=d->ticks+1;
+ }
+ if(d->config.legacy_pic04_enabled&&!lpd_tick(&domain,d->staged_tick))goto done;
  if(d->config.legacy_pic_enabled&&!pt0_tick(&staged,d->staged_tick))goto done;
  if(!consume(d,s,reason,rip,vector,event))goto done;
  /* One bounded logical-level retry; never repeat committed RX/TX/guest I/O.
   * IRQ_PENDING remains dirty and does not claim external IRQ delivery. */
- if(d->uart.irq_dirty&&lurt_retry_irq(&d->uart)==LURT_REJECTED)goto done;
+ if(!d->config.legacy_pic04_enabled&&d->uart.irq_dirty&&lurt_retry_irq(&d->uart)==LURT_REJECTED)goto done;
  /* Timer yield consumes pending events but never advances guest RIP. */
  if(reason==52){ok=true;goto done;}
  if(reason==0){uint64_t info;if(!rd(s,0x4404,&info))goto done;ok=info==0x80000603?lbp_inject(&d->bp,s):pf(d,s,reason,rip,q);goto done;}
@@ -143,8 +155,8 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  }
  if(len>15)goto done;
  switch(reason){
- case 12:ok=d->config.legacy_pic_enabled&&gw_halt(s,sr,sw);break;
- case 7:ok=d->config.legacy_pic_enabled&&gw_window_exit(s,sr,sw,d->legacy.must_one,d->legacy.allowed_one);break;
+ case 12:ok=(d->config.legacy_pic_enabled||d->config.legacy_pic04_enabled)&&gw_halt(s,sr,sw);break;
+ case 7:ok=(d->config.legacy_pic_enabled||d->config.legacy_pic04_enabled)&&gw_window_exit(s,sr,sw,d->config.legacy_pic04_enabled?d->pic04_run.must_one:d->legacy.must_one,d->config.legacy_pic04_enabled?d->pic04_run.allowed_one:d->legacy.allowed_one);break;
  case 14:ok=linv_apply(s,rip,q,(unsigned)len);break;
  case 40:ok=lpause_apply(s,rip,(unsigned)len);break;
  case 29:ok=ldd_apply(&d->debug_disabled,s,rip,q,(unsigned)len);break;
@@ -160,8 +172,11 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
   if((q>>16)==0x80){ok=lp80_io(&d->post,s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite);break;}
   if((q>>16)==0x70||(q>>16)==0x71){ok=lrtc_io(&d->rtc,s->native.gpr,rip,0,reason,q,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite);break;}
   if((q>>16)==0x20||(q>>16)==0x21||(q>>16)==0xa0||(q>>16)==0xa1){
-   uint64_t flags;if(d->config.legacy_pic_enabled){ok=rd(s,0x6820,&flags)&&pcp_io(&ports,s->native.gpr,rip,0,reason,q,(unsigned)len,flags,s,sw);break;}
+   uint64_t flags;if(d->config.legacy_pic04_enabled){ok=rd(s,0x6820,&flags)&&lpd_ports(&domain,s->native.gpr,rip,q,(unsigned)len,flags,s,sw);break;}if(d->config.legacy_pic_enabled){ok=rd(s,0x6820,&flags)&&pcp_io(&ports,s->native.gpr,rip,0,reason,q,(unsigned)len,flags,s,sw);break;}
    ok=rd(s,0x6820,&flags)&&lpic_io_flags(&d->pic,s->native.gpr,rip,0,reason,q,(unsigned)len,flags,s->hop.context,s->hop.vmwrite);break;
+  }
+  if(d->config.legacy_pic04_enabled&&((q>>16)==0x40||((q>>16)==0x43&&!(q&8)&&((uint8_t)s->native.gpr[0]>>6)==0))){
+   ok=lpd_pit_io(&domain,s->native.gpr,rip,q,(unsigned)len,d->staged_tick,s,sw);break;
   }
   if(d->config.legacy_pic_enabled&&((q>>16)==0x40||((q>>16)==0x43&&!(q&8)&&((uint8_t)s->native.gpr[0]>>6)==0))){
    ok=pt0_io(&staged,s->native.gpr,rip,0,(uint32_t)reason,q,(unsigned)len,d->staged_tick,s,sw);break;
@@ -169,11 +184,13 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
   if((q>>16)==0x61||(q>>16)==0x42||(q>>16)==0x43){
    ok=lpit2_io(&d->pit,s->native.gpr,rip,0,reason,q,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite)==LPIT_COMMITTED;break;
   }
+  if(d->config.legacy_pic04_enabled){ok=lpd_uart_io(&domain,s->native.gpr,rip,q,(unsigned)len,s->hop.context,s->hop.vmwrite);break;}
   ok=lurt_guest_io(&d->uart,s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite)>=0;break;
  default:break;
  }
 done:
  if(ok&&d->clock_staged){
+  if(d->config.legacy_pic04_enabled){d->pic04=domain;lpd_bind(&d->pic04);d->pic04_idle_reason=idle_reason;}
   if(d->config.legacy_pic_enabled){d->legacy.timer=staged;d->ports=ports;d->ports.master=&d->legacy.timer.pic;}
   d->ticks=d->staged_tick;
  }
@@ -187,27 +204,33 @@ bool lgd_reset(void*p){
  if(d->config.irq_adapter&&(d->config.irq_adapter->reserved||d->config.irq_adapter->quarantined))return false;
  if(d->generation==UINT64_MAX)return false;
  struct linux_uart_runtime uart;
- if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
- d->generation++;d->legacy_initialized=false;d->legacy=(struct lir){0};d->ports=(struct pcp){0};
+ if(!d->config.legacy_pic04_enabled&&!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
+ if(d->config.legacy_pic04_enabled)uart=(struct linux_uart_runtime){0};
+ d->generation++;d->pic04=(struct lpd_domain){0};d->pic04_run=(struct lpr_runtime){0};d->pic04_idle_reason=0;
+ if(d->config.legacy_pic04_enabled&&!lpd_init(&d->pic04,d->generation))return false;
+ d->legacy_initialized=false;d->legacy=(struct lir){0};d->ports=(struct pcp){0};
  d->bp=(struct lbp_state){0};d->msr_gp=(struct lgp_state){0};d->post=(struct lp80_state){0};lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;d->idle_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
  d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){
  struct lgd_context*d=p;if(!d||!d->ready||d->failed||d->busy||d->entry_inflight||(d->config.apic.transactions&&!d->activation.active))return -16;
+ if(d->config.legacy_pic04_enabled){d->busy=true;bool accepted=false;bool ok=lpd_send(&d->pic04,byte,&accepted);d->busy=false;if(!ok)d->failed=true;return ok&&accepted?0:-16;}
  d->busy=true;bool accepted=false;enum lurt_result r=lurt_receive(&d->uart,byte,&accepted);d->busy=false;
  return r>=0&&accepted?0:-16;
 }
 int lgd_recv(void*p){
  struct lgd_context*d=p;if(!d||!d->ready||d->failed||d->busy||d->entry_inflight||(d->config.apic.transactions&&!d->activation.active))return -16;
+ if(d->config.legacy_pic04_enabled){d->busy=true;bool available=false;uint8_t byte=0;bool ok=lpd_recv(&d->pic04,&available,&byte);d->busy=false;if(!ok)d->failed=true;return ok&&available?byte:-16;}
  d->busy=true;bool available=false;uint8_t byte=0;enum lurt_result r=lurt_pop_tx(&d->uart,&available,&byte);d->busy=false;
  return r>=0&&available?byte:-16;
 }
 bool lgd_init(struct lgd_context*d,const struct lgd_config*c,struct lgm_service_ops*out){
- if(!d||!c||!out||d->configured||d->ready||d->busy||!c->sync_irq||!c->max_exits||c->max_exits>(1u<<20)||
+ if(!d||!c||!out||d->configured||d->ready||d->busy||(!c->legacy_pic04_enabled&&!c->sync_irq)||!c->max_exits||c->max_exits>(1u<<20)||
     !lcpu_host_valid(c->max_basic,c->vendor_b,c->vendor_c,c->vendor_d,c->max_extended,&c->cpu))return false;
  struct lvp_cpuid_result cp;
  bool guest_apic=c->apic.transactions!=NULL;
- if(c->legacy_idle_advance&&!c->legacy_pic_enabled)return false;
+ if(c->legacy_idle_advance&&!(c->legacy_pic_enabled||c->legacy_pic04_enabled))return false;
+ if(c->legacy_pic04_enabled&&(c->legacy_pic_enabled||guest_apic||c->irq_adapter||c->irq_delivery_enabled||c->irq_platform_ready||c->apic.irq||c->apic.now||c->sync_irq||c->irq_ctx))return false;
  if(c->legacy_pic_enabled&&(guest_apic||c->irq_adapter||c->irq_delivery_enabled||c->irq_platform_ready||c->apic.irq||c->apic.now))return false;
  if(guest_apic&&(c->apic.now!=lgd_apic_now||c->apic.clock_ctx!=d||!lad_valid(&c->apic)||c->irq_adapter||!c->irq_delivery_enabled||!c->irq_platform_ready||
     c->sync_irq!=gia_irq4||c->irq_ctx!=c->apic.irq))return false;
@@ -242,7 +265,11 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
  d->session=s;
  uint64_t pic_flags;
  if(!s->platform.read_field||!rd(s,0x6820,&pic_flags))goto done;
- if(d->config.legacy_pic_enabled){
+ if(d->config.legacy_pic04_enabled){
+  if(!s->hop.vmwrite)goto done;
+  if(!d->pic04_run.ready){if(d->exits||s->native.resume||!lpr_init(&d->pic04_run,&d->pic04.master,s->host.caps.primary))goto done;}
+  if(!lpd_sync(&d->pic04)||!lpd_entry_ok(&d->pic04,pic_flags))goto done;
+ }else if(d->config.legacy_pic_enabled){
   if(!s->hop.vmwrite)goto done;
   if(!d->legacy_initialized){
    if(d->exits||s->native.resume||!lir_init(&d->legacy,d->generation,s->host.caps.primary)||!pcp_init(&d->ports,&d->legacy.timer.pic))goto done;
@@ -251,7 +278,7 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
   if(!pcp_entry_ok(&d->ports,pic_flags))goto done;
  }else if(!lpic_entry_ok(&d->pic,pic_flags))goto done;
  if(d->config.apic.transactions&&!lpa_before(&d->activation,&d->config.apic,s,&d->config.cpu))goto done;
- if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled||d->msr_gp.pending||d->bp.pending){
+ if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled||d->config.legacy_pic04_enabled||d->msr_gp.pending||d->bp.pending){
   struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending||d->bp.pending,.high_pending=d->high==LHP_PENDING};
   uint64_t b,a,e,v,err,len;
   if(!s->platform.read_field||!s->hop.vmwrite||
@@ -260,7 +287,9 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
      !rd(s,0x4408,&v)||v>UINT32_MAX||!rd(s,0x4018,&err)||!rd(s,0x401a,&len))goto done;
   g.blocking=b;g.activity=a;g.entry_info=e;g.vectoring=v;
   if(!owned_event(d,e,err,len,v)||(d->msr_gp.pending&&!(g.rflags&UINT64_C(0x10000))))goto done;
-  if(d->config.legacy_pic_enabled){
+  if(d->config.legacy_pic04_enabled){
+   if(!lpr_before(&d->pic04_run,&d->pic04.master,&g,s,sr,sw))goto done;
+  }else if(d->config.legacy_pic_enabled){
    if(!lir_before(&d->legacy,&g,s,sr,sw))goto done;
   }else if(d->config.apic.transactions){
    uint64_t now;
@@ -285,6 +314,10 @@ bool lgd_after_entry(void*p,struct lgs_session*s,const struct lgs_entry_result*r
   if(r->fields_valid||r->reason||r->vectoring)goto done;
   outcome=LIG_NO_ENTRY;
  }else if(r->state_result==LVS_EXIT&&r->fields_valid)outcome=LIG_EXIT;
+ if(d->config.legacy_pic04_enabled){
+  enum pmg_outcome o=outcome==LIG_EXIT?PMG_EXIT:(outcome==LIG_NO_ENTRY?PMG_NO_ENTRY:PMG_UNKNOWN);
+  if(!lpr_after(&d->pic04_run,&d->pic04.master,o,r->reason,r->vectoring,s,sw))goto done;
+ }
  if(d->config.legacy_pic_enabled){
   enum pgg_outcome o=outcome==LIG_EXIT?PGG_EXIT:(outcome==LIG_NO_ENTRY?PGG_NO_ENTRY:PGG_UNKNOWN);
   if(!lir_after(&d->legacy,o,r->reason,r->vectoring,s,sw))goto done;

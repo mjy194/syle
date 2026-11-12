@@ -1,0 +1,110 @@
+Syle PIC04 complete-domain integration C v1 — HOST TESTED, NO VM
+
+Baseline: startup_guest 0f3087af0be1449c8837b63d1555324ef1bf98cf.
+Exact input /tmp/syle-i8042-0f3087a-source.tar.gz
+SHA256 94b209ab07c755c2f6c19aad16c553045f868befbb53cd0c78776c44d3c2dac6.
+A/B dependencies are frozen copies of pic_master_04.c/h and
+pic_master_04_glue.c/h, already published separately in 44d63d2. Do not
+replace those published files without matching their hashes. Their copies
+here let the host test run from the exact 0f baseline. Publication should
+apply only the C delta to the newer A/B branch, not overwrite a whole tree.
+
+C production files: linux_pic04_domain.c/h, linux_pic04_runtime.c/h,
+linux_pic04_idle.c/h; linux_guest_dispatch.c/h, linux_guest_startup.c,
+linux_progress_diag.c/h; efi managed-guest.mk (module list),
+managed-pic04.mk and managed-pic04-progress.mk (new private object targets).
+All consumers must clean rebuild: lgd_config/context and diagnostic snapshot
+layouts change. Other legacy PIC0 and APIC modules are not rewritten.
+
+Profiles: MG_LEGACY_PIC04 is a new explicit profile, mutually exclusive with
+MG_LEGACY_PIC and MG_EXPERIMENTAL_APIC. Default baseline and the old legacy
+profile do not silently enable IRQ4 or accept mask EA. New native startup
+sets legacy_pic04_enabled and legacy_idle_advance; foreign UART callback,
+foreign IRQ domain and conflicting profile combinations are rejected.
+Targets managed-pic04 and managed-pic04-progress use m4-/m4d- private objects.
+Neither is part of default all, neither runs a VM. They retain the existing
+lifecycle frontend; continuous verification still needs the independently
+reviewed fixed-budget continuous frontend. Never call lifecycle smoke boot.
+
+One mutable device authority:
+New profile uses only d.pic04.uart, never the old d.uart. Domain contains
+PIT0, source-aware master PIC, empty-slave protocol state and UART runtime.
+All dispatch, console SEND and RECV operations use this same active domain.
+Value copying requires lpd_bind to bind UART callback to that copy's master.
+The callback is a guest-only logical IRQ4 transition, not a host port access.
+Guest I/O clones the entire domain and GPRs; only successful callbacks and
+VMWRITE commit publish their model/GPR result. Dispatch commits domain with
+the staged global tick; no later live-PIC write can be overwritten by a PIT
+clone. Callback failure after partial VMCS writes is sticky no-resume, not a
+claim of VMCS rollback. External SEND/RECV have no VMWRITE, and publish neither
+byte/result nor domain on failure. RX-full commits the documented overrun
+state but returns no acceptance for the rejected byte.
+
+IRQ semantics and lifecycle:
+ICW1=11 is edge-triggered. UART low-to-high latches IRQ4; repeated high or EOI
+while high never synthesizes a new edge. IRQ0 and IRQ4 have independent edge
+generations; fixed priority 0 > 4 allows IRQ0 over an in-service IRQ4, not the
+reverse. Master unmask supports exactly implemented 0/4 and empty cascade2;
+slave remains masked apart from strict IF0 initialization sequence. Only
+real source changes and PIT model edges create IRR. No direct fake IRQ4
+acceptance or guest-activity wake is added.
+Receipt gate carries full domain/source/vector/generation/serial ticket.
+Every before-entry path first validates exact PF/GP/BP owner plus raw entry,
+error/length/vectoring; even no-pending-IRQ cannot bypass this gate. Window
+control writes and injection happen only after that proof. after-entry
+reconciles receipt before any dispatcher or console source update. Timer,
+window or unknown exits cannot prove delivery. Unknown outcome fails even
+without a token; a definitive no-entry cancellation retains pending edges.
+Partial stage/cleanup writes retain the reserved ticket with failed gate;
+only explicit unknown receipt requires the PIC quarantine bit. Both forbid
+resume. STOP/START cannot erase ownership; reset retains existing complete
+resource-destruction preconditions and new domain generation.
+Runtime SEND/RECV is forbidden during entry-inflight; the standalone bridge
+unit test may inject a model edge in that interval solely to verify its
+reservation contract, not to claim asynchronous runtime input is supported.
+
+Time policy:
+Every normal successful exit still advances unified PIT time by one tick.
+A real timer52 while already halted may jump to the next PIT0 edge only with
+IF1/no blocking, no pending exception/event/token, synchronized UART level,
+no IRR/ISR and usable IRQ0/PIT. Unknown/dirty source state rejects. Stable high
+UART level with its prior edge consumed and EOIed is not itself a new event
+and does not forbid a PIT deadline. Any IRR conservatively blocks the jump.
+TSC=1000*global tick and lazy PIT2/RTC observe that same timestamp. This is an
+explicit discrete-event clock, not host real-time. UART RX timeout remains
+an explicitly supplied character-time API; this profile does not derive
+baud time from global ticks. Adding a routable timed UART/RTC/other source
+requires earliest-deadline scheduling or disabling this shortcut.
+No host VMX timer, total exit budget or external timeout changed. No software
+clearing of halted guest activity or fabricated receipt is used.
+
+Diagnostics:
+Old profile retains at most131 scheduled/milestone slots. New PIC04 adds at
+most one extra output for the first actual completed ticket with nonzero
+serial and source4, for at most132 outputs. Safe callbacks only cache that
+fact; actual printing remains synchronous host-restored/kernel-root context.
+A separate once-only flag prevents losing this marker to periodic-slot
+exhaustion. Collector is read-only; raw VMCS fields retain explicit validity.
+New fields include bitmap IRR/ISR, reserved/completed source (UINT64_MAX if
+absent), UART line/dirty/edge generation and idle policy reason. Historical
+completed ticket does not prove raw_reason in that same log caused its
+receipt. First source4 marker proves only the model receipt accounting;
+actual VM evidence still must be collected separately. Existing sparse
+sampling and safe/collect refusal limitations remain.
+
+Validation: sh test.sh, with exact base/ input extraction.
+ASan/UBSan (leak detection disabled in this ptrace environment), strict
+-Wall/-Wextra/-Werror and freestanding compile PASS. Original dispatcher
+fixture regressions PASS; this is not the entire repository aggregate.
+Real combined-source test includes maskEA port path, UART THRE edge then
+reserve/receipt/IIR clear/EOI, PIC fixed priority nesting, RX-full/overrun,
+real window-control defer/exit, definitive cancellation, unknown quarantine,
+3 staging + 3 cleanup partial writes, 4 guest I/O partial writes, 7 VMREAD
+failures, ownerless/error/len/vector negatives before any window write,
+callback edge-overflow failures, reentry, full-domain rebinding, idle
+stable-high versus fresh pending, source diagnostic read-only and one-shot
+IRQ4 marker. The bridge's pending-new-edge case is explicitly host simulated.
+Native startup must be compiled for baseline/old legacy/APIC/new profiles;
+full clean linking and M1/aggregate regressions are publication tasks.
+No Linux run, interactive shell, real IRQ4 delivery or final input acceptance
+has been claimed here.

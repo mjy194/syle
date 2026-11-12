@@ -11,8 +11,11 @@
 #include "linux_pit2.h"
 #include "legacy_irq_runtime.h"
 #include "pic0_ports.h"
+#include "linux_pic04_domain.h"
+#include "linux_pic04_runtime.h"
 struct lgs_session;struct lgm_service_ops;struct lgs_entry_result;
 struct lgd_config {
+ bool legacy_pic04_enabled; /* Separate IRQ0+IRQ4 edge PIC domain, opt-in. */
  bool legacy_idle_advance; /* Explicit bounded discrete idle-time policy. */
  bool legacy_pic_enabled; /* Opt-in, exclusive with APIC/lia. */
  struct lvp_cpu_features cpu;
@@ -36,6 +39,7 @@ struct lgd_config {
 #include "linux_int3.h"
 #include "linux_port80.h"
 struct lgd_context {
+ struct lpd_domain pic04;struct lpr_runtime pic04_run;unsigned pic04_idle_reason;
  struct lbp_state bp;
  struct lgp_state msr_gp;
  struct lp80_state post;

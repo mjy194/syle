@@ -102,3 +102,5 @@ sh krnl/tests/linux_i8042_dispatch.sh
 sh krnl/tests/pic_master_04.sh
 
 sh krnl/tests/pic_master_04_glue.sh
+
+sh krnl/tests/linux_pic04_integration.sh
