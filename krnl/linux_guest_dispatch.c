@@ -255,7 +255,7 @@ static bool owned_event(const struct lgd_context*d,uint64_t event,uint64_t error
  if(!d->pf.closed||d->pf.count!=4||d->pf.seen!=15)return false;
  if(d->high==LHP_PENDING)return error==0;
  return d->high==LHP_CONSUMED&&!d->demand_pf.failed&&d->demand_pf.count>=1&&d->demand_pf.count<=LNP_MAX_FAULTS&&
- (error==0||error==2||(error==0x14&&d->demand_pf.history[d->demand_pf.count-1].rip==d->demand_pf.history[d->demand_pf.count-1].address))&&error==d->demand_pf.history[d->demand_pf.count-1].error;
+ (error==0||error==2||error==6||(error==0x14&&d->demand_pf.history[d->demand_pf.count-1].rip==d->demand_pf.history[d->demand_pf.count-1].address))&&error==d->demand_pf.history[d->demand_pf.count-1].error;
 }
 bool lgd_before_entry(void*p,struct lgs_session*s){
  struct lgd_context*d=p;

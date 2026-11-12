@@ -1,0 +1,38 @@
+Strict user nonpresent WRITE PF (error6) extension v1, no VM.
+Base f1c23f4 /tmp/syle-user-pf-f1c23f4-source.tar.gz
+SHA ee124f4ec4e16638a3ee53ad3b062f715de055d37c0e4b7b459e2ed6bb26103b.
+Production delta only linux_user_pf.c/h and linux_guest_dispatch.c -> krnl.
+No build module/context ABI changes. Existing error14 path remains unchanged.
+
+New exacterror6 (P0,write1,user1) proves fault address canonical and first
+nonpresent item with every present ancestor U/S=1 and RW=1. NX is permissible
+for data write when NXE1; reserved NX with NXE0 still rejected. Present leaf or
+huge mapping cannot establish nonpresence. Nonpresent software bits ignored.
+RIP independently proves user present executable mapping and final owned page;
+RO user code valid. No requirement RIP=data, no olduserstack mapping requirement.
+RIP one-byte mapping check establishes starting execution page, not a decoder
+or full instruction-width proof. Actual CPU exception metadata supplies the
+write operation; VMexit instruction length is not trusted for emulation.
+No guest write instruction is emulated and no software page repair is done.
+
+All existing mode, cacheduserCS/SS, targetkernelCS, cachedTR/GDT/TSS.RSP0 IST0,
+handler, 48B supervisor stack, RF1-preserve, privateRAM/EPT trusted construction
+contracts remain. Shared32 demand budget/history and narrowreceipt unchanged.
+owner accepts6 only when matching latest exact history;14 still requires
+historyRIP==address. No error4/7/other PF expansion. valid-last entryerror6/
+len0/info80000b0e; unchangedRIP/GPR/flags; CR2/history commit only fullsuccess.
+Partialwrite/read failure sticky; noresume. Other CPL3 exits still fail-stop.
+
+Evidence from independent prior run: RIP4a7839 code bytes
+48 89 3d 10 22 0a 00 (storeRDI to RIP+0xa2210) resolves549a50;
+actualCPUerror6 and pagewalk missingPTE agree. This is explanatory evidence,
+not a RIP whitelist or software store implementation. Candidate not VM tested.
+
+Validation sh test.sh && sh dispatch.sh:
+ASan/UBSan and helper/dispatcher freestanding -Werror PASS.
+Full previous error14 tests retained. error6 positive RO user code, absent data,
+independent NX data subtree; US0/RW0 ancestor, noncanonicaldata, presentdata,
+missing/NX/supervisor/non-owned RIP, error4/7 reject. 34 VMREAD failures,
+3 VMWRITE partialfailures. Real-source dispatcher inject/before/consume and
+wrong entryerror rejection. Existing full dispatcher fixture regression passes.
+No shell/guest acceptance or completion claim.

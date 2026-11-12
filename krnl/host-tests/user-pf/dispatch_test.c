@@ -18,5 +18,10 @@ int main(void){
  user_dispatch_setup();dispatch.demand_pf.count=31;for(unsigned i=0;i<31;i++)dispatch.demand_pf.history[i]=(struct lnp_tuple){0x1000+i,0x2000+i,0x1000,0};assert(run(0)&&dispatch.demand_pf.count==32&&dispatch.demand_pf.pending);
  user_dispatch_setup();dispatch.demand_pf.count=32;assert(!run(0)&&dispatch.failed);
  user_dispatch_setup();assert(!run(10)&&dispatch.failed);
+
+ user_dispatch_setup();write_setup(); /* refresh private RAM as user writable-fault fixture */
+ memcpy(mock.f,user_fields,sizeof mock.f);assert(run(0)&&dispatch.demand_pf.pending&&dispatch.demand_pf.history[0].error==6&&session.native.cr2==0x401050);
+ assert(lgd_before_entry(&dispatch,&session));r=(struct lgs_entry_result){.state_result=LVS_EXIT,.fields_valid=true,.reason=10};assert(lgd_after_entry(&dispatch,&session,&r));mock.f[0x0802]=0x10;mock.f[0x681e]=K+0xa000;mock.f[0x440c]=2;assert(run(10)&&!dispatch.demand_pf.pending);
+ user_dispatch_setup();write_setup();memcpy(mock.f,user_fields,sizeof mock.f);assert(run(0));mock.f[0x4018]=14;assert(!lgd_before_entry(&dispatch,&session)&&dispatch.failed);
  puts("actual dispatcher userPF injection/owner/receipt/failstop PASS");
 }

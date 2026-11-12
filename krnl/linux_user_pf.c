@@ -5,20 +5,20 @@ static uint64_t u64(const uint8_t*b){uint64_t v=0;for(unsigned i=0;i<8;i++)v|=(u
 struct walk {const struct lup_snapshot*g;uint64_t ram;void*ctx;lup_read read;};
 static bool raw(struct walk*w,uint64_t a,uint64_t*v){uint8_t b[8];if(a>w->ram-8||!w->read(w->ctx,a,b,8))return false;*v=u64(b);return true;}
 /* kind0 supervisor read,1 supervisor write,2 supervisor execute,3 user
- * nonpresent fetch proof. No A/D requirements: CPU may set them on delivery. */
+ * nonpresent fetch proof,4 user nonpresent write,5 user present execute. No A/D requirements: CPU may set them on delivery. */
 static bool translate(struct walk*w,uint64_t va,unsigned kind,uint64_t*pa){
  if(!canon(va))return false;
  uint64_t table=w->g->cr3&UINT64_C(0xfffff000);bool us=true,rw=true,nx=false;
  for(unsigned level=0;level<4;level++){
   if(table>w->ram-4096)return false;
   uint64_t e;if(!raw(w,table+((va>>(39-9*level))&511)*8,&e))return false;
-  if(!(e&1))return kind==3; /* software bits ignored only when P=0 */
+  if(!(e&1))return kind==3||kind==4; /* software bits ignored only when P=0 */
   if(e&UINT64_C(0x7fffffff00000000))return false;
   us=us&&!!(e&4);rw=rw&&!!(e&2);nx=nx||!!(e>>63);
-  if((nx&&!(w->g->efer&0x800))||(kind==3&&(!us||nx))||(kind==2&&nx))return false;
+  if((nx&&!(w->g->efer&0x800))||((kind==3||kind==5)&&(!us||nx))||(kind==4&&(!us||!rw))||(kind==2&&nx))return false;
   if((e&128)&&level<2)return false; /* 1GiB pages not in this profile */
   if(level==3||(level==2&&(e&128))){
-   if(kind==3||us||(kind==1&&!rw))return false;
+   if(kind==3||kind==4||(kind==5?!us:us)||(kind==1&&!rw))return false;
    uint64_t mask=level==2?UINT64_C(0x1fffff):4095;
    if(level==2&&(e&UINT64_C(0x1fe000)))return false;
    *pa=(e&UINT64_C(0xfffff000)&~mask)|(va&mask);return *pa<w->ram;
@@ -32,7 +32,7 @@ static bool range(struct walk*w,uint64_t a,unsigned n,unsigned kind,uint8_t*out)
 }
 bool lup_validate(const struct lnp_state*s,const struct lup_snapshot*g,uint64_t ram,void*ctx,lup_read read){
  if(!s||!g||!read||ram<4096||ram>UINT64_C(0x100000000)||(ram&4095)||s->failed||s->pending||s->count>=LNP_MAX_FAULTS||
- g->reason||g->info!=0x80000b0e||g->error!=0x14||g->address!=g->rip||!canon(g->rip)||!canon(g->rsp)||
+ g->reason||g->info!=0x80000b0e||(g->error!=0x14&&g->error!=6)||(g->error==0x14&&g->address!=g->rip)||!canon(g->rip)||!canon(g->rsp)||
  g->event||g->entryerror||g->entrylen||g->vector||g->blocking||g->activity||g->debug||
  (g->cr0&0x80000031)!=0x80000031||(g->cr0&~UINT64_C(0x8005003b))||
  !(g->cr4&32)||(g->cr4&~UINT64_C(0x26b0))||(g->cr3&~UINT64_C(0xfffff018))||
@@ -46,7 +46,8 @@ bool lup_validate(const struct lnp_state*s,const struct lup_snapshot*g,uint64_t 
  !g->tr||g->tr>65535||(g->tr&7)||g->trar!=0x8b||g->trlimit<103||g->trlimit>65535||!canon(g->trbase)||g->trbase>UINT64_MAX-g->trlimit||!canon(g->trbase+g->trlimit))return false;
  for(unsigned i=0;i<s->count;i++)if(s->history[i].rip==g->rip&&s->history[i].address==g->address&&s->history[i].cr3==g->cr3&&s->history[i].error==g->error)return false;
  struct walk w={g,ram,ctx,read};uint64_t unused;
- if(!translate(&w,g->address,3,&unused))return false;
+ if(!translate(&w,g->address,g->error==6?4:3,&unused))return false;
+ if(g->error==6&&!range(&w,g->rip,1,5,0))return false;
  uint8_t gate[16],desc[16],slot[8];
  if(!range(&w,g->idtr+224,16,0,gate))return false;
  uint64_t lo=u64(gate),hi=u64(gate+8),sel=(lo>>16)&65535;

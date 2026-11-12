@@ -19,3 +19,10 @@ absence separately from supervisor handler/TSS/stack permissions. Only the
 stated 4-level, IST0, RF-already-set profile is supported; no general CPL3
 exception support, actual hardware frame delivery, or Linux shell acceptance
 is implied by host tests and build success.
+
+The bounded user-PF profile additionally permits exact nonpresent user-write
+error 0x6, independently proving executable owned user RIP and writable-user
+ancestors at the absent data address. See `docs/linux-user-write-pf.txt`.
+Error 0x14 remains supported; error 4/7 and other CPL3 exceptions remain
+unsupported. No instruction emulation or software page repair is performed.
+Real Linux execution of this increment is not implied by host validation.
