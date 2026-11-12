@@ -1,0 +1,26 @@
+xAPIC MMIO transaction host checkpoint; NOT dispatcher wiring or platform enable.
+Dependencies: linux_apic_msr state/receipt, linux_mmio_memory strict walker,
+reviewed guest_apic archive db6fb383f5d9d6f8256052b9efa1b0ff91983ac347cb2a7899c7e33517ed20eb,
+MOV decoder archive 0ef536ec868f52d0dc4322153c67bab8d83b5f1814f199a6a20b667774fbb8e3.
+
+Explicitly maps native AX BX CX DX SI DI BP R8..15 plus VMCS RSP into decoder
+RAX RCX RDX RBX RSP RBP RSI RDI R8..15. True current CS/CR snapshot is required.
+DS/ES/SS bases must be zero. Safely fetch prefix, decode actual length, validate
+raw EPT access/GLA/GPA and private guest paging, then access FEE00000 device page.
+Only aligned32 device accesses supported. Unknown width/opcode, x2APIC mode,
+FEC IOAPIC page or mismatched exit proof reject without any VMWRITE.
+
+Poll/stage the entire pointer-free guest_apic. Load destination value is prepared
+without mutating GPR. For RSP load write VMCS RSP first, then RIP; any failure is
+FATAL even if the write took effect, and the caller MUST NOT resume. Software
+model/GPR remain uncommitted. On success commit model and non-RSP destination;
+RSP resides only in VMCS. EOI level effect shares the same lams sequence/domain
+and idempotent sink as MSR accesses. PENDING has already consumed the instruction;
+retry only lams_retry, never rerun this transaction. No host APIC/MSR operations.
+
+FEC support requires a separate transaction covering IOAPIC plus callbacks and
+APIC enqueue; shallow-copying IOAPIC would leak effects before RIP commit and is
+intentionally not done. Current default CPUID/APIC enable gates remain unchanged.
+Test all16 architectural register encodings, both RSP write failure points,
+RIP-only write failure, effect pending retry, true page table mismatches and
+unavailable instruction suffix. No actual VM or Linux IRQ acceptance claimed.
