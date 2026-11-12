@@ -93,3 +93,6 @@ sh krnl/tests/linux_int3_dispatch.sh
 sh krnl/tests/linux_progress_diag.sh
 
 sh krnl/tests/linux_idle_dispatch.sh
+
+sh krnl/tests/linux_uart_lcr_semantics.sh
+sh krnl/tests/linux_uart_lcr_audit.sh

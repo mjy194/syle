@@ -1,6 +1,7 @@
 #include "linux_uart.h"
-/* EPS/stick selection has no framing effect while parity enable is clear. */
-static bool lcr_supported(uint8_t v){v&=(uint8_t)~0x30u;return v==0||v==3||v==0x80||v==0x83;}
+/* Legal configuration latch is separate from effective byte TX support.
+ * Break has immediate line effects and is intentionally not implemented. */
+static bool lcr_supported(uint8_t v){return !(v&0x40);}
 static bool valid(const struct linux_uart*u){return u&&u->rh<16&&u->th<16&&u->rc<=16&&u->tc<=16&&u->rx_idle<=4&&!(u->modem&15)&&!(u->modem_external&15)&&!(u->modem_delta&0xf0)&&!(u->ier&~15)&&!(u->mcr&0xe0)&&!(u->fcr&0x3e)&&lcr_supported(u->lcr);}
 static unsigned capacity(const struct linux_uart*u){return (u->fcr&1)?16:1;}
 static unsigned trigger(const struct linux_uart*u){static const unsigned n[]={1,4,8,14};return (u->fcr&1)?n[u->fcr>>6]:1;}

@@ -4,7 +4,8 @@
 #include <stdint.h>
 #define LUART_CAPACITY 16u
 /* Independent bounded polling/IRQ-level model, not a complete 16550.
- * Byte registers, 8N1/reset+DLAB only; no baud timing or break/parity
+ * Byte registers accept non-break LCR configuration; TX requires effective 8N1.
+ * DLAB maps DLL/DLM only; no EFR, baud timing or break/parity
  * simulation. IER bits0..3, OUT2 gate, modem deltas and loopback supported.
  * FIFO trigger1/4/8/14; timeout requires explicit character-time ticks.
  * TX completion occurs on explicit drain, not host port writes.
