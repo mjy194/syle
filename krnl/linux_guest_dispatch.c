@@ -11,6 +11,7 @@
 #include "linux_invlpg.h"
 #include "linux_sysenter_msr.h"
 #include "linux_pause.h"
+#include "linux_feature_control.h"
 bool lgd_apic_now(void*p,uint64_t*out){
  struct lgd_context*d=p;if(!d||!out||d->failed||d->ticks>UINT64_MAX/1000||
  (d->clock_staged&&(!d->busy||d->staged_tick!=d->ticks+1||d->staged_tick>UINT64_MAX/1000)))return false;
@@ -69,6 +70,7 @@ static bool pf(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_
 }
 static bool msr(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_t rip,unsigned len){
  uint32_t id=(uint32_t)s->native.gpr[2];uint64_t base;
+ if(id==0x3a)return lfc_read(d->activation.kind,&d->config.cpu,s->native.gpr,rip,0,reason,len,s->hop.context,s->hop.vmwrite);
  if(id==0x8b)return lmc_msr(&d->microcode,s->native.gpr,rip,0,reason,len,s->hop.context,s->hop.vmwrite);
  if(id==0xc0000101u)return rd(s,0x6810,&base)&&lgsc_apply(s->native.gpr,rip,base,0,reason,len,s->hop.context,s->hop.vmwrite);
  struct lvp_cpuid_result basic,ext;
