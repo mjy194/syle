@@ -116,6 +116,10 @@ static void pf_diagnostic(struct lgs_session*g){
   for(unsigned j=0;j<d.trace[i].count&&j<4;j++){log_text("PF.pte address=");log_hex(d.trace[i].address[j]);log_text(" value=");log_hex(d.trace[i].entry[j]);log_text("\n");}
  }
  log_text("PF.data_valid=");log_hex(d.data_valid);log_text(" gate=");log_hex(d.gate[0]);log_hex(d.gate[1]);log_text(" csdesc=");log_hex(d.csdesc);log_text("\n");
+ log_text("PF.target_csdesc=");log_hex(d.target_csdesc);
+ log_text(" trdesc=");log_hex(d.trdesc[0]);log_hex(d.trdesc[1]);log_text("\n");
+ log_text("PF.tss_rsp0=");log_hex(d.tss_rsp0);log_text(" selected_slot=");log_hex(d.selected_slot);
+ log_text(" selected_stack=");log_hex(d.selected_stack);log_text("\n");
  log_text("PF.instruction=");log_hex(d.bytes[0]);log_hex(d.bytes[1]);log_text(" handler=");log_hex(d.handler_bytes[0]);log_hex(d.handler_bytes[1]);log_text("\n");
 }
 #ifdef MG_PROGRESS_DIAG

@@ -8,7 +8,7 @@ static bool readfield(void*c,uint32_t f,uint64_t*v){(void)c;if(!fields)return fa
 int main(void){s.memory.prepared=s.host.active=s.host.ready=true;s.memory.owner.map=map;s.platform.read_field=readfield;s.native.gpr[11]=123;
  for(unsigned i=1;i<=6;i++)s.memory.pages[i]=i*4096;
  ((uint64_t*)mem[0])[0]=0x2003;((uint64_t*)mem[1])[0]=0x3003;((uint64_t*)mem[2])[0]=0x4003;((uint64_t*)mem[3])[5]=0x5003;
- struct lgpd_snapshot d;assert(lgpd_collect(&s,&d));assert(d.valid==65535&&d.r12==123&&d.trace[0].status==1&&d.trace[0].gpa==0x5000);assert(d.data_valid&4);assert(maps<1000);
+ struct lgpd_snapshot d;assert(lgpd_collect(&s,&d));assert(d.valid==((UINT64_C(1)<<LGPD_FIELDS)-1)&&d.r12==123&&d.trace[0].status==1&&d.trace[0].gpa==0x5000);assert(d.data_valid&4);assert(maps<1000);
  fields=false;maps=0;assert(lgpd_collect(&s,&d));assert(!d.valid&&!maps);fields=true;
  s.memory.pages[1]=0;assert(lgpd_collect(&s,&d));assert(d.trace[0].status!=1);
  s.state.host_dirty=true;assert(!lgpd_collect(&s,&d));puts("PF diagnostic: bounded owned translation, invalid fields/tokens, dirty host rejection PASS");}

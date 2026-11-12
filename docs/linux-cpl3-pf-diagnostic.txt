@@ -1,0 +1,47 @@
+CPL3 PF read-only diagnostic extension v1
+Base 3364614 /tmp/syle-pic04-3364614-source.tar.gz
+SHA 07e907f9585b28a9a655172d7e30fefeb22b3cf0c83ed389a6fe70817dc97906.
+
+Only linux_pf_diagnostic.c/h and linux_guest_manager.c changed. No dispatcher,
+PF policy, injection, guest register writes, clocks, budgets or VM changes.
+Diagnostic output remains existing failed-slice host-restored/kernel-root path.
+Collector refuses host_dirty/inactive/unready/unowned states before reading.
+All callbacks read-only; individual VMREAD failures clear corresponding valid
+bit. Collection failure never changes backend.start result or resumes guest.
+STRUCT ABI EXPANDED: clean rebuild manager AND collector/all header consumers.
+
+Raw field index0..15 unchanged. Added:
+16 CSbase6808,17 CSlimit4802,18 SSselector0804,19 SSbase680a,
+20 SSlimit4804,21 SSAR4818,22 TRselector080e,23 TRbase6814,
+24 TRlimit480e,25 TRAR4822,26 RFLAGS6820,27 pendingdebug6822.
+Existing CSselector0802/AR4816 retained.
+Verified against Linux v6.12 arch/x86/include/asm/vmx.h:
+https://github.com/torvalds/linux/blob/v6.12/arch/x86/include/asm/vmx.h
+
+Fixed bounds: 28VMREAD, 12traces, each4 levels, finite 8-byte reads bytewise,
+at most16bytes per descriptor, no scanning. Every GPA maps via private page
+ownership array; zero/unaligned/>=2^52 token rejects. No guestVA host cast.
+All fields must be available before interpreting memory; raw values remain
+usable independently with valid mask. Data validity bits:
+0 IDT14 gate16B;1 currentCSdesc;2 RIP16B;3 handler16B;
+4 targetCSdesc;5 cachedTR selector's GDT16B;6 TSS RSP0;7 selected stack.
+TSS uses cachedTR base/limit, NOT descriptor base. RSP0 offset4, IST1..7
+offset36+8*(IST-1), selected from actual gate low3 ISTbits. TSS raw contents
+remain raw even if type/present invalid; this is observation not permission.
+Traces6 targetCS,7 TRdesc,8 RSP0slot,9 selectedslot,
+10 align_down(selected_stack,16)-48,11 alignedtop-1.
+Existing handler trace5; first/last48B cover possible two pages.
+No range/trace status is claimed as permission acceptance. Upper U/S,RW,NX,
+A/D etc remain raw entries for later architectural review.
+Zero selected stack can be validly read but no frame trace is attempted.
+
+https://github.com/torvalds/linux/blob/v6.12/arch/x86/include/asm/processor.h
+64-bit packed x86_hw_tss confirms RSP0/IST offsets.
+
+sh test.sh: actual ASan/UBSan new matrix + existing diagnostic regression,
+freestanding collector AND native manager compilation PASS. Tests user CS33
+versus target10, RSP0/IST1 selection, crossing stack page, all12 added VMREAD
+failures, missing/highbit ownership, short limit/overflow, zero vs unavailable,
+dirty-host reject, unchanged session+guest memory. No VM run or CPL3 PF fix
+claimed. old_test.c updates existing regression validmask for28 fields; when
+merging update krnl/tests/linux_pf_diagnostic.c same mask expectation.

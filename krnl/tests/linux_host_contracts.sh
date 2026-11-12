@@ -104,3 +104,5 @@ sh krnl/tests/pic_master_04.sh
 sh krnl/tests/pic_master_04_glue.sh
 
 sh krnl/tests/linux_pic04_integration.sh
+
+sh krnl/tests/linux_cpl3_pf_diagnostic.sh
