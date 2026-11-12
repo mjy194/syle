@@ -8,11 +8,11 @@ board=json.loads((R/'ms01/board-v22-snapshot.json').read_text())
 def sid(i):return f'SC-M1-BOOT-{i:02}' if i<=6 else f'SC-M1-{i:03}'
 # Links refer to reproducible commands in run.py, not inferred historical PASS.
 groups={
-1:['smoke'],2:['smoke','debugger'],3:['boot-exit'],4:['boot-exit'],5:['boot-exit','efi-failure'],6:['boot-abi','cpu-boundary'],
+1:['smoke'],2:['smoke','debugger'],3:['boot-exit','firmware-diagnostics'],4:['boot-exit','firmware-diagnostics'],5:['boot-exit','firmware-diagnostics','efi-failure'],6:['boot-abi','cpu-boundary'],
 7:['boot-policy','boot-chain'],8:['boot-policy'],9:['boot-policy','boot-chain'],10:['boot-policy','boot-chain'],11:['boot-policy'],12:['boot-policy'],
-13:['boot-elf'],14:['boot-read','boot-chain'],15:['boot-elf'],16:['boot-elf'],17:['boot-elf'],18:['boot-elf'],19:['boot-elf','boot-read'],20:['boot-elf'],
-21:['smoke','diagnostics','debugger'],22:['cpu-boundary','diagnostics','paging-boundaries'],23:['cpu-boundary','diagnostics','debugger'],24:['pmm'],25:['pmm','high-memory'],26:['pmm','paging-boundaries'],27:['pmm'],28:['pmm'],29:['pmm'],
-30:['smoke','memory-faults'],31:['smoke','paging-alias'],32:['memory-faults','wx-alias','diagnostics','paging-boundaries'],33:['memory-faults','diagnostics','paging-boundaries'],34:['memory-faults','diagnostics','paging-boundaries'],35:['paging-alias','wx-alias'],36:['paging-alias','wx-alias'],37:['wx-alias'],38:['console','diagnostics','paging-boundaries'],
+13:['boot-elf'],14:['boot-read','boot-chain'],15:['boot-elf'],16:['boot-elf'],17:['boot-elf'],18:['boot-elf','firmware-diagnostics'],19:['boot-elf','boot-read'],20:['boot-elf'],
+21:['smoke','diagnostics','debugger'],22:['cpu-boundary','diagnostics','paging-boundaries'],23:['cpu-boundary','diagnostics','debugger'],24:['pmm','pmm-model'],25:['pmm','pmm-model','high-memory'],26:['pmm','pmm-model','paging-boundaries'],27:['pmm','pmm-model'],28:['pmm','pmm-model'],29:['pmm','pmm-model'],
+30:['smoke','memory-faults'],31:['smoke','paging-alias','paging-rw-wb'],32:['memory-faults','wx-alias','diagnostics','paging-boundaries'],33:['memory-faults','diagnostics','paging-boundaries'],34:['memory-faults','diagnostics','paging-boundaries'],35:['paging-alias','paging-rw-wb','wx-alias'],36:['paging-alias','paging-rw-wb','wx-alias'],37:['wx-alias'],38:['console','diagnostics','paging-boundaries'],
 39:['high-memory'],40:['high-memory'],41:['pmm','paging-alias'],42:['pmm','paging-alias'],43:['pmm'],44:['smoke','boot-chain'],45:['vector-layout','diagnostics'],46:['diagnostics'],47:['diagnostics','nmi-overlap'],48:['diagnostics','nmi-overlap'],49:['vector-layout','diagnostics','fallback-vectors'],50:['console','diagnostics'],51:['uart','diagnostics'],52:['diagnostics'],53:['console','diagnostics'],54:['uart','diagnostics'],55:['console','diagnostics'],56:['diagnostics','nmi-overlap'],57:['diagnostics','debugger'],58:['debugger'],59:['debugger'],60:['debugger'],61:['debugger'],62:['debugger'],63:['debugger','debugger-abrupt'],64:['debugger','smoke']}
 limits={
 3:'Mocked firmware callbacks execute actual production transaction, not physical firmware fault injection.',

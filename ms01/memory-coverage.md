@@ -4,6 +4,12 @@ This maps assertion evidence, not a claim that every draft detail is proven.
 All QEMU results mean QEMU/OVMF TCG, not native hardware. Final aggregate logs
 supersede the component logs listed here. No published board state is changed.
 
+The later `pmm-model` host suite adds independent bitmap/ownership checks for
+SC-M1-024 through SC-M1-029 across eight deterministic 25,000-step sequences,
+plus allocation-split metadata-capacity failure and recovery. See
+[`ms01-pmm-stateful-20261112.md`](../docs/ms01-pmm-stateful-20261112.md).
+These synthetic public-API checks do not replace any held guest supplement.
+
 | Draft MS1 scenario | Automated assertions | Limits |
 | --- | --- | --- |
 | 024 | `krnl/tests/memory.sh`: only conventional WB pages, loader/kernel/user/map/FB reservations, runtime/protected/UC and firmware exclusions | Synthetic host map |

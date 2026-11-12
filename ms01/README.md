@@ -1,5 +1,24 @@
 # MS-01 implementation and reproducible validation
 
+The latest isolated follow-up starts from verified dev commit `8d9679e` and adds
+aggregate registration for the existing EFI diagnostics/page-permission host
+checks, frame-layout regression and non-executable-held-suite checks. Its fresh
+15-suite build/host result and static noncanonical-branch diagnosis are recorded
+in [the follow-up report](../docs/ms01-followup-20261112.md). No guest execution or
+complete milestone acceptance is claimed; both runtime holds remain unchanged.
+
+The subsequent [stateful PMM supplement](../docs/ms01-pmm-stateful-20261112.md)
+adds public-API ownership/model checks and metadata-split failure recovery. With
+that host-only suite registered, the selected build/host aggregate has 16 suites.
+
+The [evidence-integrity fix](../docs/ms01-evidence-integrity-20261112.md) prevents
+an unavailable test executable from leaving an older PASS in the output folder.
+Each invocation invalidates old acceptance before work starts; report and scenario
+files carry the same fresh `runId`. `running` means an incomplete snapshot, not
+proof that a process is still alive. Only a terminal report and matching scenario
+file describe a completed invocation. The selected build/host suite count remains
+16; no new milestone requirement is introduced.
+
 Current R4 work uses a verified recovery of the R3 delivery, because the latest
 original working directories are absent in this environment. R4 adds host tests
 only; it does not claim a fresh original-directory merge or QEMU run. See

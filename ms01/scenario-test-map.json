@@ -52,7 +52,8 @@
       ],
       "automationImplemented": true,
       "suiteIds": [
-        "boot-exit"
+        "boot-exit",
+        "firmware-diagnostics"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Mocked firmware callbacks execute actual production transaction, not physical firmware fault injection."
@@ -68,7 +69,8 @@
       ],
       "automationImplemented": true,
       "suiteIds": [
-        "boot-exit"
+        "boot-exit",
+        "firmware-diagnostics"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Three EBS attempts selected as technical policy, not newly user-confirmed."
@@ -86,6 +88,7 @@
       "automationImplemented": true,
       "suiteIds": [
         "boot-exit",
+        "firmware-diagnostics",
         "efi-failure"
       ],
       "evidenceStatus": "execution_results_are_separate",
@@ -305,7 +308,8 @@
       ],
       "automationImplemented": true,
       "suiteIds": [
-        "boot-elf"
+        "boot-elf",
+        "firmware-diagnostics"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Actual production allocation/load seam with injected allocator conflict, not physical reservation conflict."
@@ -415,7 +419,8 @@
       ],
       "automationImplemented": true,
       "suiteIds": [
-        "pmm"
+        "pmm",
+        "pmm-model"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
@@ -432,6 +437,7 @@
       "automationImplemented": true,
       "suiteIds": [
         "pmm",
+        "pmm-model",
         "high-memory"
       ],
       "evidenceStatus": "execution_results_are_separate",
@@ -450,6 +456,7 @@
       "automationImplemented": true,
       "suiteIds": [
         "pmm",
+        "pmm-model",
         "paging-boundaries"
       ],
       "evidenceStatus": "execution_results_are_separate",
@@ -466,7 +473,8 @@
       ],
       "automationImplemented": true,
       "suiteIds": [
-        "pmm"
+        "pmm",
+        "pmm-model"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
@@ -483,7 +491,8 @@
       ],
       "automationImplemented": true,
       "suiteIds": [
-        "pmm"
+        "pmm",
+        "pmm-model"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
@@ -499,7 +508,8 @@
       ],
       "automationImplemented": true,
       "suiteIds": [
-        "pmm"
+        "pmm",
+        "pmm-model"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Implementation metadata limits only, not arbitrary firmware complexity."
@@ -535,7 +545,8 @@
       "automationImplemented": true,
       "suiteIds": [
         "smoke",
-        "paging-alias"
+        "paging-alias",
+        "paging-rw-wb"
       ],
       "evidenceStatus": "execution_results_are_separate",
       "scopeLimit": "Assertions cover the documented bounded implementation; not exhaustive input/platform coverage."
@@ -613,6 +624,7 @@
       "automationImplemented": true,
       "suiteIds": [
         "paging-alias",
+        "paging-rw-wb",
         "wx-alias"
       ],
       "evidenceStatus": "execution_results_are_separate",
@@ -631,6 +643,7 @@
       "automationImplemented": true,
       "suiteIds": [
         "paging-alias",
+        "paging-rw-wb",
         "wx-alias"
       ],
       "evidenceStatus": "execution_results_are_separate",
