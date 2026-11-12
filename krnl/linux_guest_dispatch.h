@@ -25,7 +25,9 @@ struct lgd_config {
  void *irq_ctx;
  bool (*sync_irq)(void*,unsigned,bool); /* explicit logical sink, no fake APIC */
 };
+#include "linux_debug_disabled.h"
 struct lgd_context {
+ struct ldd_state debug_disabled;
  struct lgd_config config;
  struct lpit2 pit;uint64_t ticks,staged_tick;bool clock_staged;
  struct lpa_state activation;

@@ -113,6 +113,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  if(len>15)goto done;
  switch(reason){
  case 14:ok=linv_apply(s,rip,q,(unsigned)len);break;
+ case 29:ok=ldd_apply(&d->debug_disabled,s,rip,q,(unsigned)len);break;
  case 28:ok=cr(s,rip,q,(unsigned)len);break;
  case 10:{uint32_t leaf=(uint32_t)s->native.gpr[0];
   ok=lcp_apply(d->activation.kind,&d->config.cpu,s->native.gpr,rip,0,reason,(unsigned)len,s->hop.context,s->hop.vmwrite);
@@ -139,7 +140,7 @@ bool lgd_reset(void*p){
  if(d->config.irq_adapter&&(d->config.irq_adapter->reserved||d->config.irq_adapter->quarantined))return false;
  struct linux_uart_runtime uart;
  if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
- d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
+ d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
  d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){

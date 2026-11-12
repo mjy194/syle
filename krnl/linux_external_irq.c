@@ -20,7 +20,7 @@ void lei_observe(struct lei_irq *s,bool vmfail,bool real_exit,uint32_t reason,ui
  /* These intercepts require execution of a guest instruction after entry.
   * Never infer delivery from timer, EPT, exception, or entry-info valid. */
  switch(reason) {
- case 10: case 14: case 16: case 28: case 30: case 31: case 32: case 12:
+ case 10: case 14: case 16: case 28: case 29: case 30: case 31: case 32: case 12:
   s->phase=LEI_DELIVERED; s->armed=false; return;
  default: s->phase=LEI_QUARANTINED; return;
  }
