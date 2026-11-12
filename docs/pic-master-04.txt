@@ -1,0 +1,33 @@
+Pure master 8259 IRQ0/IRQ4 model; host-only, NOT connected to dispatcher.
+New independent module; old pic0/default profile unchanged.
+
+No callbacks/pointers. Entire object may be staged by owner. ICW11 edge mode,
+vector aligned>=32, cascadeICW3=4 (slave must remain empty), ICW4=01/03
+normal/AEOI. ICW1 clears IRR/ISR/IMR/receipt; source watermarks and physical
+level4 remain, so reset does not replay an already-high line. Serial tokens
+never reset within domain. Caller creates unique domain after complete teardown.
+IMR only bits0/2/4 may vary (eight masks including EA); cascade enable requires
+caller-proven slave_all_masked. Cold state only FF/FB. ICW transitional IMR0 is
+real; owner must enforce safe IF/init contract. No sources other than IRQ0/4.
+OCW3 0A/0B selects IRR/ISR; nonspecific EOI20 clears highest ISR; specific60/64.
+Rotation, poll, special masks, level-trigger mode and other commands rejected.
+
+IRQ0 cumulative sequence monotonic, multiple edges coalesce. IRQ4 input is
+logical UART output level converted to rising edge; a repeated high level or
+EOI does NOT create another edge. Falling level does not erase captured IRR.
+Each source generation is preserved independently. Priority0>4: ISR4 permits
+IRQ0 nesting, ISR0 blocks both, same-source ISR blocks itself. AEOI no ISR.
+reserve fixes source/vector/generation as logical INTA choice. accept requires
+external verified delivery receipt, never reselects if higher edge arrives.
+It consumes only reserved source's old generation, preserving later edges.
+cancel only after proof no entry; no IRR lost. Unknown outcome quarantine
+keeps token and rejects mutation until full teardown. Latest completed ticket
+is idempotent; stale/wrong-domain/source/vector/generation fail unchanged.
+All false operations preserve model and caller outputs. Owner serializes and
+stages external source input, never writes live PIC through reentrant callbacks.
+No hardware interrupts, keyboard/UART input completion, or guest boot claimed.
+
+sh test.sh: ASan/UBSan + freestanding -Wall -Wextra -Werror PASS.
+512 command/mask cases; cold probes, ICW reset, edge coalescing, masked capture,
+priority/nested EOI, AEOI, reserved new edges, cancellation, idempotence,
+quarantine, identity mismatch, monotonicity/overflow, failed operations atomic.
