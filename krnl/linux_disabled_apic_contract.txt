@@ -1,0 +1,24 @@
+Baseline disabled integrated virtual APIC, not an MSR-less virtual CPU.
+Evidence: e814e8d host-independent probe stopped exit31/RIPffffffff816d7a05,
+ECX1b. Fixed Linux vmlinux 816d7a00 sets ECX1b, RDMSR, then tests EAX bit10 and
+returns when x2APIC is clear. Addresses are evidence, not a runtime whitelist.
+Old fallback went to syscall/FS MSR bank which correctly rejected unknown1b.
+
+Baseline read-only compatibility contract now exposes fixed IA32_APIC_BASE
+0x00000000fee00100: aligned virtual baseFEE00000 and BSPbit8, global enablebit11
+and x2bit10 clear. CPUID APIC and x2APIC remain hidden; no APIC device mapping,
+route, interrupt controller enable or host MSR access is introduced. This
+represents a disabled virtual integrated controller, not 'no MSR exists'.
+Require baseline profile, CPUID MSR feature and absence of APIC/x2 advertisement.
+Only CPL0 RDMSR length2, low32ECX=1b is accepted. EAX/EDX zero-extended after RIP
+commit. Any write, including same-value, enable/x2/rebase/reserved writes, fails
+closed. This is an intentionally read-only subset, NOT implemented hardware
+write semantics or a synthesized architectural #GP. Further writes need a
+separately reviewed model; no success is fabricated.
+
+Experimental profile's existing lad_msr branch remains first and unchanged;
+its failures return directly, never fall back to the disabled value. CPUID and
+real device model stay coupled. Host tests verify enabled experimental read
+still yieldsfee00900 via real activation, whereas baseline yieldsfee00100.
+Default virtual time path is unchanged. Build MG_MODS adds linux_disabled_apic;
+MP derives its modules from MG_MODS. No VM execution in this increment.

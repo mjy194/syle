@@ -7,6 +7,7 @@
 #include "linux_efer_commit.h"
 #include "linux_msr_bank.h"
 #include "linux_guest_irq_glue.h"
+#include "linux_disabled_apic.h"
 bool lgd_apic_now(void*p,uint64_t*out){
  struct lgd_context*d=p;if(!d||!out||d->failed||d->ticks>UINT64_MAX/1000||
  (d->clock_staged&&(!d->busy||d->staged_tick!=d->ticks+1||d->staged_tick>UINT64_MAX/1000)))return false;
@@ -69,6 +70,7 @@ static bool msr(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64
  if(!lcp_query(d->activation.kind,&d->config.cpu,1,0,&basic)||!lcp_query(d->activation.kind,&d->config.cpu,0x80000001,0,&ext))return false;
  if(d->config.apic.transactions&&(id==0x1b||(id>=0x800&&id<=0x8ff)))
   return lad_msr(&d->config.apic,s,basic.c,basic.d)>=LAMS_COMMITTED;
+ if(id==0x1b)return lda_read(d->activation.kind,basic.c,basic.d,s->native.gpr,rip,0,reason,len,s->hop.context,s->hop.vmwrite);
  if(id==0xc0000080u){
   struct lefer_env e={.eptp=s->memory.eptp,.ext_edx=ext.d};
   return rd(s,0x2806,&e.efer)&&rd(s,0x6800,&e.cr0)&&rd(s,0x6804,&e.cr4)&&rd(s,0x4012,&e.entry)&&
