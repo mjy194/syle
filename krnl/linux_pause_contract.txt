@@ -1,0 +1,6 @@
+Restricted guest PAUSE intercept
+Fixed ELF81171e70/e7f readsTSC, subtracts initial baseline, comparesRDI threshold; e93 F390 PAUSE then loop. No assumed runtimeRDI or RIP whitelist.
+Actual VMCS reason40; primary30 PAUSE-exiting and31 secondary enabled; secondaryexact42 rejects PLEbit10. LongmodeCPL0 and existingCR profile/IA32e entry, lenexact2, canonicalRIPspan. No hostsleep/PAUSE needed; only guestRIP+2 write, no register/flags/device/VMX control change. Invalid/missing/failing read/write stops via dispatcher latch; uncertainRIP mutation cannotresume.
+No reliance on PAUSE exit qualification (not an operand). Existing event/vectoring checks remain. Successful dispatch adds oneexistinglogicaltick; failed handling addsnone. Alternating RDTSC/PAUSE increases successive virtualTSC reads by2000. Finite reasonabledelay mayprogress; observed runtime threshold notknown, globalbudget maystop first. No budget/tick alteration or real-time calibration claim.
+reason40 added as actuallyexecuted instruction receipt forPF/IRQ, not timer/entryfail/vectoring.
+Host tests actualdispatch, exactcontrol/mode/length/VMread failures, partialwrite latch/GPRunchanged, synthetic threshold9000 finishes5iterations with10000delta, max_exits2 stillstops at2, receipt tests. NoVM. BuildMG_MODS+=linux_pause.

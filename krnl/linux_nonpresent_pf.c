@@ -48,7 +48,7 @@ bool lnp_validate(const struct lnp_state*s,const struct lmm_memory*m,const struc
 bool lnp_observe(const struct lnp_state*s,uint64_t reason,uint64_t vector,uint64_t event,struct lnp_state*out){
  if(!s||!out||s->failed||s->count>LNP_MAX_FAULTS||(s->pending&&!s->count)||(reason&(1ull<<31))||vector||
  (s->pending?(event!=0&&event!=0xb0e&&event!=0x80000b0e):event!=0))return false;
- if(s->pending&&reason!=10&&reason!=14&&reason!=16&&reason!=28&&reason!=29&&reason!=30&&reason!=31&&reason!=32&&reason!=48)return false;
+ if(s->pending&&reason!=10&&reason!=14&&reason!=16&&reason!=28&&reason!=29&&reason!=30&&reason!=31&&reason!=32&&reason!=40&&reason!=48)return false;
  *out=*s;out->pending=false;return true;
 }
 static bool owned(void*p,uint64_t g,void*out,size_t n){
