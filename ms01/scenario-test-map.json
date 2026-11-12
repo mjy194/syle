@@ -806,6 +806,7 @@
       "automationImplemented": true,
       "suiteIds": [
         "vector-layout",
+        "object-contract",
         "diagnostics"
       ],
       "evidenceStatus": "execution_results_are_separate",
@@ -878,6 +879,7 @@
       "automationImplemented": true,
       "suiteIds": [
         "vector-layout",
+        "object-contract",
         "diagnostics",
         "fallback-vectors"
       ],

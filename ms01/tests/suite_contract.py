@@ -173,6 +173,7 @@ class SuiteContractTests(unittest.TestCase):
         for name, script in [('firmware-diagnostics', 'efi/tests/firmware_diagnostics.sh'),
                              ('paging-rw-wb', 'krnl/tests/paging_rw_wb.sh'),
                              ('pmm-model', 'krnl/tests/memory_model.sh'),
+                             ('object-contract', 'efi/tests/ms01_object_contract.py'),
                              ('suite-contract', 'ms01/tests/suite_contract.py')]:
             self.assertEqual(by_id[name][0], 'host')
             self.assertEqual(by_id[name][1][1], script)

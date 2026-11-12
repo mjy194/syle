@@ -22,6 +22,7 @@ TESTS=[
  ('paging-rw-wb','host',['sh','krnl/tests/paging_rw_wb.sh']),
  ('console','host',['bash','efi/tests/console_memory.sh']),
  ('uart','host',['bash','efi/tests/ms01_uart.sh']),
+ ('object-contract','host',['python3','efi/tests/ms01_object_contract.py']),
  ('vector-layout','host',['python3','efi/tests/ms01_vector_layout.py']),
  ('smoke','qemu',['bash','efi/tests/smoke.sh']),
  ('boot-chain','qemu',['python3','efi/tests/boot_chain.py']),
