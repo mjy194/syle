@@ -1,0 +1,8 @@
+# New isolated cloud PIT0 candidate, 2026-11-12
+This is a new implementation, NOT recovery of the offline archbook file.
+Pure channel-0 binary mode-2 counter with software gate held high. Initial count loads on next logical PIT clock; count 0 encodes 65536, count 1 rejected. Running count reload waits until next old-cycle rising edge. OUT low for count 1; cumulative rising edges include programming low-to-high transition. No PIC, injection, dispatcher or hardware integration; no Linux test.
+Supports control 0x34 and counter latch 0x00, scalar model byte access 0x40; unsupported modes/control reads reject. Reads retain latched count; live low/high reads can naturally straddle clock changes. Failed calls do not mutate model.
+Initial host validation: GCC -Wall -Wextra -Werror; ASan+UBSan differential count/OUT/edges over reload 2..199 and 2000 ticks, deferred reload, zero reload, latch, time-backward and edge overflow; freestanding compile PASS. Independent review passed within this declared pure-model scope. Not ready for runtime integration.
+Self-review revision: reprogramming before first load replaces the not-yet-loaded count; latch after one byte of live read is explicitly unsupported and rejected (avoids pretending separate hardware read pointers). Added tests pass. Independent review also checked 49 delayed-reload/batched-step cases, repeated latch, maximum tick and invalid-count atomicity. LeakSanitizer was not verified (ptrace environment limitation).
+
+Run the host-only regression with `sh krnl/tests/pit0.sh`. This model is not linked into the runtime. PIC/IRQ0, interrupt-window handling and HLT wakeup still require integration and validation. Passing these model checks is not Linux end-to-end acceptance.

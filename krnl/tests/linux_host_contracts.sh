@@ -53,6 +53,7 @@ sh krnl/tests/linux_profile_lifecycle.sh
 sh krnl/tests/linux_nonpresent_pf.sh
 sh krnl/tests/linux_nonpresent_dispatch.sh
 sh krnl/tests/linux_pit2.sh
+sh krnl/tests/pit0.sh
 sh krnl/tests/linux_clock_dispatch.sh
 sh krnl/tests/linux_disabled_apic.sh
 sh krnl/tests/linux_disabled_apic_dispatch.sh
