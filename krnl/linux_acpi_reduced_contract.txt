@@ -1,0 +1,24 @@
+Independent optional direct-boot ACPI description, not complete UEFI firmware.
+Existing topology generator/installer/default boot remain unchanged. Region stays
+[E0000,F0000), reserved E820. RSDP E0000, XSDT E0040, MADT E0080,
+FADT E0100 (276 bytes), DSDT E0240 (136 bytes); total712 bytes.
+XSDT lists FADT first then MADT. FADT revision6/minor5, HW_REDUCED_ACPI bit20,
+PWR_BUTTON/SLEEP_BUTTON bits4/5 select control-method handling rather than fixed
+buttons; no PWRB/SLPB namespace devices are supplied, so no usable buttons claimed. IA-PC boot
+flags MSI-not-supported/no-CMOS-RTC. No 8042/legacy devices flag. No PM blocks,
+SCI/SMI/reset/sleep registers or FACS. No _S1.._S5 objects, no sleep or shutdown
+service claimed. Sleep registers are optional per ACPI6.5 section4.8.3.7.
+DSDT compiled from included ASL: ACPI0007 CPU UID0, PNP0501 COM1 IO3F8 length8,
+GSI4 active-high level resource. MADT same CPU0, IOAPIC0/FEC00000, LAPICFEE00000,
+IRQ4 ISO0xD, PCAT_COMPAT0. No virtual clock/timer rate advertised by these tables.
+Sources verified: ACPI6.5 sections4.8.3.7 and5.2.9; Linux6.12
+ drivers/acpi/acpica/tbfadt.c skips legacy register conversion for HW_REDUCED;
+ arch/x86/kernel/acpi/boot.c skips SCI wiring and selects null_legacy_pic.
+This is evidence for feasible description, not proof fixed Linux accepted it.
+Fixed kernel6.12-syle-m2 config remains unknown/noIKCONFIG/stripped ELF.
+Host iasl compilation and acpiexec namespace parsing do not execute guest Linux.
+No hardware/host pointer inherited. No sleep/reset method invented to bypass
+missing device support. Final user firmware/storage/display milestones remain.
+No WBINVD/low-power-S0/timer/PCI abilities advertised beyond implemented subset;
+formal full ACPI platform conformance and fixed-kernel runtime acceptance unproven.
+Generated AML pinned to iasl20251212; changing compiler requires review/re-hash.

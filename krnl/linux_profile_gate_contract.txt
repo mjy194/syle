@@ -1,0 +1,43 @@
+First-entry profile evidence gate, host-only, activation remains separate.
+
+lpg_prepare reads real current VMCS via platform.read_field, all 67 exclusively
+owned host EPT pages through memory.owner.map, and actual guest bootparams/firmware
+through the owned page array. No GPA is cast to host pointer. Firmware validator
+lar_verify_owned reads exact712-byte HW-reduced image plus RSDP/E820 publication;
+INSTALLED flags/reports/caller ready booleans are not consulted.
+
+Actual VMCS requirements match strict lvp_prepare controls: pin desired49 with
+mandatory reserved16 allowed; primary required trap set with reserved0401e172;
+secondary exactly42 (EPT+WBINVD), entry desired c204 with reserved11ff allowed,
+exit desired3c0204 with reserved36dff allowed. All are unsigned32, required bits
+set and unsupported bits zero. MSR bitmaps and IO bitmaps are disabled; IO exits
+unconditional. Exception bitmap/CR masks all ones, PF mask/match and CR3 targets
+zero, MSR entry/exit lists empty, no pending entry event. Preemption timer equals
+the per-entry reload derived from saved supported timer shift (0..20,
+matching lvp_prepare). Fixed reserved
+bits are explicitly covered by a positive test, not accidentally rejected.
+
+EPTP from VMCS must equal this owner EPTP/root|1e. Every expected4K RAM mapping
+matches the immutable owned page array, intermediate mappings match owned table
+addresses, and every unused slot is zero. This proves the FEE/FEC guest windows
+are actually unmapped, not merely listed in a plan. EPT A/D disabled; guest RAM
+is not inspected as a host EPT table. Allocator ownership/uniqueness is the prior
+lgm_prepare contract; this gate does not create ownership from arbitrary tokens.
+
+Domain is fresh xAPIC APIC-base/ID0, masked LVTs/IOAPIC, no IRR/ISR/TMR, pending
+receipt, reservations or prior generations. lams/gia/lio model, domain and sink
+bindings must agree; IOAPIC is the real guest profile/callback. Synthetic clock
+callback must succeed and not precede model last_now. No calibration claim.
+The session must be prepared+host-safe+current, unlaunched, zero actual exits,
+initial loader RIP/RSP and RSI bootparams, valid128MiB memory plan. The output
+choice is written only after all evidence succeeds. This is not a signed token
+or user authorization; owner must keep verified inputs immutable until entry.
+
+The firmware comparison is BEFORE FIRST ENTRY ONLY. Normal guest changes to
+bootparams later are not forbidden. A later runtime path must independently
+validate actual EPTP/control domain, clock monotonicity and owner identity before
+each entry; this first gate is NOT a replacement for those ongoing checks.
+Other initial guest register/segment/VM-entry validity is the existing
+lvp_prepare/lvh_open trusted contract; this is NOT a complete independent
+VM-entry-state verifier. No dispatcher selection, installation, core prepare hook or default policy was
+changed in this batch. Host matrix proves gate behavior, not a Linux boot result.

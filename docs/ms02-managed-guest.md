@@ -39,3 +39,10 @@ The unified APIC bridge now has compiled FEE/FEC MMIO and MSR routes and uses
 paired IRQ hooks. This is still an inactive optional configuration: the
 production CPU profile does not advertise APIC and the default startup does
 not enable it. Host routing tests are distinct from Linux IRQ acceptance.
+
+The experimental CPU-profile wrapper, hardware-reduced ACPI description and
+owned-RAM installer/verification gate are now separate host-tested modules.
+The gate checks actual VMCS/EPT/control and firmware conditions; it does not
+activate the profile. No default startup, firmware installation or APIC CPU
+advertisement is changed by these modules. Real profile activation and guest
+acceptance remain separate work.

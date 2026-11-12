@@ -37,6 +37,13 @@ run guest-irq-adapter krnl/tests/linux_guest_irq_adapter.c krnl/linux_guest_irq_
 sh krnl/tests/guest_mmio_mov.sh
 sh krnl/tests/linux_mmio_memory.sh
 SOURCE="$root" APIC_DEPS="$root/krnl" IOAPIC_DEPS="$root/krnl" OUTPUT="$tmp/apic-irq-combo" sh krnl/tests/run_linux_apic_irq_combo.sh
+sh krnl/tests/linux_apic_mmio.sh
+sh krnl/tests/linux_apic_dispatch.sh
+sh krnl/tests/linux_guest_irq_glue.sh
+sh krnl/tests/linux_cpu_profile.sh
+run acpi-reduced krnl/tests/linux_acpi_reduced.c krnl/linux_acpi_reduced.c krnl/linux_acpi_topology.c
+run acpi-reduced-install krnl/tests/linux_acpi_reduced_install.c krnl/linux_acpi_reduced_install.c krnl/linux_acpi_reduced.c krnl/linux_acpi_topology.c
+sh krnl/tests/linux_profile_gate.sh
 # Native harness uses CPL3 refusal/fixup and user FX state only. Do not apply
 # sanitizer instrumentation across the intentional FX-state exchange.
 "$CC" -std=c11 -Ikrnl -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -fno-pie -no-pie krnl/host-tests/linux_vcpu_native.c krnl/host-tests/linux_vcpu_native_fx.S krnl/linux_vcpu_native.c krnl/linux_vcpu_native.S krnl/linux_vcpu_state.c -o "$tmp/native"

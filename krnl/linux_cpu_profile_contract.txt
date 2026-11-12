@@ -1,0 +1,28 @@
+Pure CPU profile wrapper checkpoint, NOT runtime activation.
+Default lvp_cpuid/lcpu_apply ABI and implementation remain untouched. lcp_query
+BASELINE delegates exactly; 768 leaf/subleaf comparisons check identical output.
+EXPERIMENTAL_APIC adds only APIC(leaf1 EDX9) and x2APIC(ECX21), fixed one logical
+processor and initial APIC ID0. No new maxleaf, TSCdeadline, XSAVE, OSXSAVE, AVX,
+PCID, LA57, PMU, topology enumeration or host passthrough. Synthetic timer is not
+calibrated hardware. Emulated APIC does not require host x2APIC capabilities.
+
+All CPUID exits AND all internal MSR/MMIO/IRQ capability queries must consume the
+same immutable chosen lcp_kind through lcp_query. Decorating only the exit result
+would leave policy incoherent and is forbidden. lcp_apply atomically commits
+native GPRs after guest RIP VMWRITE. Failure forbids resume even if a write took
+effect. The caller must preserve virtual BIOS_SIGN_ID semantics: capture input
+leaf before apply, and refresh virtual microcode state only after successful
+leaf1 commit. This module does not mutate that separate model.
+
+This file does not select an experimental profile for any running session.
+The enum is a definition, not proof/permission to enable. Actual profile gate
+must directly verify owned guest RAM firmware readback (forthcoming strict
+HW-reduced exact-image verifier), boot_params RSDP and E820 reserved ownership;
+actual VMCS controls/EPT mappings, trap coverage, complete device-domain binding,
+clock semantics, and modeled CPUID/MSR/MMIO firmware consistency. An INSTALLED
+flag, caller-authored report or irq_platform_ready bool is insufficient.
+No existing default dispatcher, boot, firmware or runner was changed.
+
+Restricted unsupported NMI/ExtINT/INIT/SIPI, timer calibration, interrupt-window
+and HLT handling remain explicit limitations. Full Linux IRQ acceptance requires
+separately authorized independent execution; host model tests are not acceptance.
