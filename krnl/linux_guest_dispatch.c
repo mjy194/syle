@@ -1,4 +1,5 @@
 #include "linux_guest_dispatch.h"
+#include "linux_user_pf.h"
 #include "linux_i8042_absent.h"
 #include "linux_pic04_idle.h"
 #include "linux_guest_manager.h"
@@ -66,7 +67,7 @@ static bool cr(struct lgs_session*s,uint64_t rip,uint64_t q,unsigned len){
 }
 static bool pf(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_t rip,uint64_t q){
  if(!d->config.fixed_input_verified)return false;
- if(d->pf.closed&&d->high==LHP_CONSUMED)return lnp_inject(&d->demand_pf,s);
+ if(d->pf.closed&&d->high==LHP_CONSUMED){uint64_t cs;if(!rd(s,0x0802,&cs))return false;return (cs&3)==3?lup_inject(&d->demand_pf,s):lnp_inject(&d->demand_pf,s);}
  if(d->pf.closed){
   struct lhp_snapshot snap;
   return lgds_high(s,reason,rip,q,0,0,&snap)&&lhp_accept(d->high,&d->pf,&snap)&&
@@ -125,7 +126,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  }
  uint64_t reason,rip,q,len,cs,vector,event;
  if(!rd(s,0x4402,&reason)||reason!=supplied||reason>UINT16_MAX||!rd(s,0x681e,&rip)||
-    !canonical(rip)||!rd(s,0x6400,&q)||!rd(s,0x440c,&len)||!rd(s,0x0802,&cs)||(cs&3)||
+    !canonical(rip)||!rd(s,0x6400,&q)||!rd(s,0x440c,&len)||!rd(s,0x0802,&cs)||((cs&3)&&!(reason==0&&(cs&3)==3))||
     !rd(s,0x4408,&vector)||vector||!rd(s,0x4016,&event))goto done;
  if(reason==52&&d->config.legacy_idle_advance&&!d->config.legacy_pic04_enabled){
   struct lip_idle g={.reason=reason,.event=event,.vector=vector,
@@ -254,7 +255,7 @@ static bool owned_event(const struct lgd_context*d,uint64_t event,uint64_t error
  if(!d->pf.closed||d->pf.count!=4||d->pf.seen!=15)return false;
  if(d->high==LHP_PENDING)return error==0;
  return d->high==LHP_CONSUMED&&!d->demand_pf.failed&&d->demand_pf.count>=1&&d->demand_pf.count<=LNP_MAX_FAULTS&&
- (error==0||error==2)&&error==d->demand_pf.history[d->demand_pf.count-1].error;
+ (error==0||error==2||(error==0x14&&d->demand_pf.history[d->demand_pf.count-1].rip==d->demand_pf.history[d->demand_pf.count-1].address))&&error==d->demand_pf.history[d->demand_pf.count-1].error;
 }
 bool lgd_before_entry(void*p,struct lgs_session*s){
  struct lgd_context*d=p;
@@ -278,7 +279,7 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
   if(!pcp_entry_ok(&d->ports,pic_flags))goto done;
  }else if(!lpic_entry_ok(&d->pic,pic_flags))goto done;
  if(d->config.apic.transactions&&!lpa_before(&d->activation,&d->config.apic,s,&d->config.cpu))goto done;
- if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled||d->config.legacy_pic04_enabled||d->msr_gp.pending||d->bp.pending){
+ if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled||d->config.legacy_pic04_enabled||d->msr_gp.pending||d->bp.pending||d->demand_pf.pending){
   struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending||d->bp.pending,.high_pending=d->high==LHP_PENDING};
   uint64_t b,a,e,v,err,len;
   if(!s->platform.read_field||!s->hop.vmwrite||

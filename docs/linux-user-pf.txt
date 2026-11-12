@@ -1,0 +1,58 @@
+Strict CPL3 nonpresent instruction-fetch PF, host-only candidate v1.
+Base87ff172 /tmp/syle-cpl3-87ff172-source.tar.gz
+SHA 8340f16e4ad3f37f641c51ca7d636740be80422f60c64d7ee0c99c9c90c81d2d.
+
+Production: new linux_user_pf.c/h to krnl, dispatcher.c to krnl,
+managed-guest.mk to efi. No existing struct ABI changed.
+CPL3 reason0 alone may pass outer CPL gate; strict helper then requires actual
+PF error14, RIP=CR2, user64 cachedCS a0fb and SS c0f3, flat/canonical, no
+pendingevent/vectoring/blocking/activity/debug. All other CPL3 exits reject.
+No RIP whitelist, instruction fetch requirement, or mapping of olduserstack.
+User and supervisor demand faults SHARE existing32 history budget/pending owner.
+Duplicate tuple rejects; owner error14 requires matching last history RIP=CR2.
+before_entry now authenticates demand owner in default profile too.
+Existing receipt whitelist unchanged (includes EPT48); timer/newexceptions still
+stop pending delivery. Not general consecutive-fault support.
+
+Independent walker, not fake CPL0 lmm: 4-level paging, 4KiB/2MiB pages, low32
+physical profile, all higher address/reserved bits conservatively rejected.
+Every table and final handler/stack/system data GPA reads through private owner
+mapping. User absent proof checks present ancestors US/NX and then first P=0;
+software bits ignored only there. Present leaf/large-page refuses absence.
+Supervisor system reads may be RO/NX; handler must executable; stack writable
+and supervisor. A/D need NOT be set: existing trusted prepared EPT maps owned
+RAM RWX so CPU may perform architectural updates. This module does not modify
+any guest page table nor independently re-prove whole EPT construction.
+SMEP/SMAP/PCIDE/LA57/PKE/CET unsupported by current mode mask.
+
+Actual gate14 must P/DPL0 interrupt/IST0, targetflat kernel CS descriptor
+00af9b000000ffff only (accessed set; no implicit RO-GDT accessed write).
+CachedTR must busy64TSS/present, matching resident GDT16B descriptor base/limit,
+minimum103; targetTSS RSP0 read at+4. Matching GDT copy is extra restrictive
+integrity contract, cachedTR is architectural base. IST!=0 rejected.
+RSP0 may equalTSSbase: selectedstack16-align-down then48B prior bytes must
+be owned supervisor-writable, across pages. Hardware pushes original
+SS/RSP/RFLAGS/CS/RIP/error and changes CPL/CS/stack; we do not construct frame.
+RFLAGS current RF1 required (matches real10202), preserved; no flags writes.
+No synthetic GP RF rule applied. Handler performs real SWAPGS/CR3 logic.
+
+Write entryerror14 -> len0 -> info80000b0e validlast. Only after all writes
+commit same demandhistory/pending and guest CR2. Partial failure sticky,
+noresume; softwarehistory/CR2/clock uncommitted, possiblydirtyVMCS retained.
+RIP/CS/RSP/GPR/RFLAGS untouched. Only trusted single-BSP exclusive host-safe
+session may invoke; no callbacks into live emulation while validation runs.
+
+Host tests: sh test.sh && sh dispatch.sh
+ASan/UBSan, -Werror freestanding helper/dispatcher PASS. User absentPTE
+with A0 ancestors; supervisorRO+NX systempages, RW+NX stack; missingowned
+handler/stack, NXexec/ROstack/USancestor/protection/presenthuge, badgate/TR,
+RF/metadata/mode/canonical, duplicate/budget, all34 reads and3 write failures.
+Actual full dispatcher injection, beforeowner mismatch, kernel instruction
+receipt consumption, failure latch, CPL3 nonPF reject, mixed31supervisor+
+1user total32 budget. Existing dispatcher fixture regression passes.
+Hostfixture initialactivity/block0 is test input; actual runtime reads them,
+not inferred from old diagnostic (which lacked those fields).
+
+Real VM evidence motivated scope but THIS CANDIDATE HAS NOT RUN IN VM.
+No shell/user PF handling success claimed. RF observed10202 at prior stop;
+fault instruction not fetched/decoded because absent execution page is fault.
