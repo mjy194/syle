@@ -11,11 +11,12 @@
 #include "linux_invlpg.h"
 #include "linux_sysenter_msr.h"
 #include "linux_pause.h"
+#include "linux_idle_pit.h"
 #include "linux_feature_control.h"
 #include "linux_misc_features.h"
 bool lgd_apic_now(void*p,uint64_t*out){
  struct lgd_context*d=p;if(!d||!out||d->failed||d->ticks>UINT64_MAX/1000||
- (d->clock_staged&&(!d->busy||d->staged_tick!=d->ticks+1||d->staged_tick>UINT64_MAX/1000)))return false;
+ (d->clock_staged&&(!d->busy||(!d->idle_staged?d->staged_tick!=d->ticks+1:(!d->config.legacy_idle_advance||!d->config.legacy_pic_enabled||d->staged_tick<=d->ticks||d->staged_tick-d->ticks>65536))||d->staged_tick>UINT64_MAX/1000)))return false;
  *out=(d->clock_staged?d->staged_tick:d->ticks)*1000;return true;
 }
 static bool canonical(uint64_t x){return (x>>47)==0||(x>>47)==0x1ffff;}
@@ -114,12 +115,20 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  if(d->config.legacy_pic_enabled){
   if(!d->legacy_initialized||d->legacy.failed||d->legacy.inflight)goto done;
   staged=d->legacy.timer;ports=d->ports;ports.master=&staged.pic;
-  if(!pt0_tick(&staged,d->staged_tick))goto done;
+
  }
  uint64_t reason,rip,q,len,cs,vector,event;
  if(!rd(s,0x4402,&reason)||reason!=supplied||reason>UINT16_MAX||!rd(s,0x681e,&rip)||
     !canonical(rip)||!rd(s,0x6400,&q)||!rd(s,0x440c,&len)||!rd(s,0x0802,&cs)||(cs&3)||
-    !rd(s,0x4408,&vector)||vector||!rd(s,0x4016,&event)||!consume(d,s,reason,rip,vector,event))goto done;
+    !rd(s,0x4408,&vector)||vector||!rd(s,0x4016,&event))goto done;
+ if(reason==52&&d->config.legacy_idle_advance){
+  struct lip_idle g={.reason=reason,.event=event,.vector=vector,
+   .owner=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending||d->bp.pending||d->high==LHP_PENDING||d->legacy.timer.pic.reserved||d->legacy.irq.event.phase!=LEI_IDLE};
+  if(!rd(s,0x4826,&g.activity)||!rd(s,0x6820,&g.flags)||!rd(s,0x4824,&g.blocking)||!rd(s,0x4018,&g.error)||!rd(s,0x401a,&g.length)||!lip_plan(&staged,d->ticks,&g,&d->staged_tick))goto done;
+  d->idle_staged=d->staged_tick!=d->ticks+1;
+ }
+ if(d->config.legacy_pic_enabled&&!pt0_tick(&staged,d->staged_tick))goto done;
+ if(!consume(d,s,reason,rip,vector,event))goto done;
  /* One bounded logical-level retry; never repeat committed RX/TX/guest I/O.
   * IRQ_PENDING remains dirty and does not claim external IRQ delivery. */
  if(d->uart.irq_dirty&&lurt_retry_irq(&d->uart)==LURT_REJECTED)goto done;
@@ -166,7 +175,7 @@ done:
   if(d->config.legacy_pic_enabled){d->legacy.timer=staged;d->ports=ports;d->ports.master=&d->legacy.timer.pic;}
   d->ticks=d->staged_tick;
  }
- d->clock_staged=false;
+ d->clock_staged=false;d->idle_staged=false;
  if(!ok){d->failed=true;d->activation.failed=true;}
  d->busy=false;return ok;
 }
@@ -178,7 +187,7 @@ bool lgd_reset(void*p){
  struct linux_uart_runtime uart;
  if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
  d->generation++;d->legacy_initialized=false;d->legacy=(struct lir){0};d->ports=(struct pcp){0};
- d->bp=(struct lbp_state){0};d->msr_gp=(struct lgp_state){0};d->post=(struct lp80_state){0};lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
+ d->bp=(struct lbp_state){0};d->msr_gp=(struct lgp_state){0};d->post=(struct lp80_state){0};lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;d->idle_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
  d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){
@@ -196,6 +205,7 @@ bool lgd_init(struct lgd_context*d,const struct lgd_config*c,struct lgm_service_
     !lcpu_host_valid(c->max_basic,c->vendor_b,c->vendor_c,c->vendor_d,c->max_extended,&c->cpu))return false;
  struct lvp_cpuid_result cp;
  bool guest_apic=c->apic.transactions!=NULL;
+ if(c->legacy_idle_advance&&!c->legacy_pic_enabled)return false;
  if(c->legacy_pic_enabled&&(guest_apic||c->irq_adapter||c->irq_delivery_enabled||c->irq_platform_ready||c->apic.irq||c->apic.now))return false;
  if(guest_apic&&(c->apic.now!=lgd_apic_now||c->apic.clock_ctx!=d||!lad_valid(&c->apic)||c->irq_adapter||!c->irq_delivery_enabled||!c->irq_platform_ready||
     c->sync_irq!=gia_irq4||c->irq_ctx!=c->apic.irq))return false;

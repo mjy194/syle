@@ -13,6 +13,7 @@
 #include "pic0_ports.h"
 struct lgs_session;struct lgm_service_ops;struct lgs_entry_result;
 struct lgd_config {
+ bool legacy_idle_advance; /* Explicit bounded discrete idle-time policy. */
  bool legacy_pic_enabled; /* Opt-in, exclusive with APIC/lia. */
  struct lvp_cpu_features cpu;
  struct lad_config apic; /* Optional entire guest_apic domain; never mix lia. */
@@ -43,7 +44,7 @@ struct lgd_context {
  struct lpic_state pic;
  struct lrtc_state rtc;
  struct lgd_config config;
- struct lpit2 pit;uint64_t ticks,staged_tick;bool clock_staged;
+ struct lpit2 pit;uint64_t ticks,staged_tick;bool clock_staged,idle_staged;
  struct lpa_state activation;
  struct lpfg_state pf;
  struct lnp_state demand_pf;

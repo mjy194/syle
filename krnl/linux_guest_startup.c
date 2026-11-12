@@ -26,7 +26,7 @@ static void cpu(uint32_t leaf,uint32_t *a,uint32_t *b,uint32_t *c,uint32_t *d) {
 bool linux_guest_startup_install(void) {
  struct lgd_config c={.max_exits=1u<<20,.fixed_input_verified=true,.sync_irq=retain_level};
  #ifdef MG_LEGACY_PIC
- c.legacy_pic_enabled=true;
+ c.legacy_pic_enabled=true;c.legacy_idle_advance=true;
  #endif
  uint32_t a,b,x,d;
  cpu(0,&c.max_basic,&c.vendor_b,&c.vendor_c,&c.vendor_d);
