@@ -8,6 +8,7 @@
 #include "linux_msr_bank.h"
 #include "linux_guest_irq_glue.h"
 #include "linux_disabled_apic.h"
+#include "linux_invlpg.h"
 bool lgd_apic_now(void*p,uint64_t*out){
  struct lgd_context*d=p;if(!d||!out||d->failed||d->ticks>UINT64_MAX/1000||
  (d->clock_staged&&(!d->busy||d->staged_tick!=d->ticks+1||d->staged_tick>UINT64_MAX/1000)))return false;
@@ -109,6 +110,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  }
  if(len>15)goto done;
  switch(reason){
+ case 14:ok=linv_apply(s,rip,q,(unsigned)len);break;
  case 28:ok=cr(s,rip,q,(unsigned)len);break;
  case 10:{uint32_t leaf=(uint32_t)s->native.gpr[0];
   ok=lcp_apply(d->activation.kind,&d->config.cpu,s->native.gpr,rip,0,reason,(unsigned)len,s->hop.context,s->hop.vmwrite);
