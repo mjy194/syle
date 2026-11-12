@@ -11,7 +11,7 @@ build/lr-main.o: ../krnl/main.c | build
 	$(CC) $(KFLAGS) $(LR_DEFS) -c $< -o $@
 build/lr-exceptions.o: src/exceptions.c | build
 	$(CC) $(KFLAGS) $(LR_DEFS) -c $< -o $@
-build/lr-exceptions-asm.o: src/exceptions.S | build
+build/lr-exceptions-asm.o: src/linux_exceptions.S | build
 	$(CC) -g -fno-pie $(LR_DEFS) -c $< -o $@
 build/lr-native-asm.o: ../krnl/linux_vcpu_native.S | build
 	$(CC) -g -fno-pie $(LR_DEFS) -c $< -o $@
