@@ -23,6 +23,9 @@ for n in linux_vcpu_policy linux_vcpu_event linux_vcpu_msr; do run "$n" "host-te
 run cr host-tests/linux_vcpu_cr.c krnl/linux_vcpu_cr.c krnl/linux_vcpu_policy.c
 run state krnl/host-tests/linux_vcpu_state.c krnl/linux_vcpu_state.c
 run backend -DLVB_HOST_TEST krnl/host-tests/linux_vcpu_backend.c krnl/linux_vcpu_backend.c
+run msr-bank krnl/host-tests/linux_msr_bank.c krnl/linux_msr_bank.c krnl/linux_vcpu_state.c
+run uart-model krnl/tests/linux_uart.c krnl/linux_uart.c
+run uart-model-io krnl/tests/linux_uart_model_io.c krnl/linux_uart_model_io.c krnl/linux_uart.c
 # Native harness uses CPL3 refusal/fixup and user FX state only. Do not apply
 # sanitizer instrumentation across the intentional FX-state exchange.
 "$CC" -std=c11 -Ikrnl -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -fno-pie -no-pie krnl/host-tests/linux_vcpu_native.c krnl/host-tests/linux_vcpu_native_fx.S krnl/linux_vcpu_native.c krnl/linux_vcpu_native.S krnl/linux_vcpu_state.c -o "$tmp/native"

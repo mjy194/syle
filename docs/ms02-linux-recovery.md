@@ -46,3 +46,15 @@ have no Linux runtime test, per the instruction to finish features first.
 
 No full Linux boot, M2 completion, firmware/storage/display coverage or general
 hardware acceptance is claimed by this checkpoint.
+
+## Additional host-only device foundations
+
+`linux_msr_bank` adds staged guest FS VMCS handling and guest-owned
+KERNEL_GS_BASE/syscall MSR storage. The isolated module is not wired to the
+runner and does not pass guest MSR accesses through to host hardware.
+
+`linux_uart` adds a separate 16-byte RX/TX model, IRQ/status side effects,
+OUT2, loopback/modem state and four-character timeout. `linux_uart_model_io`
+commits device/register effects only after the guest RIP VMWRITE succeeds.
+The original TX-only runtime is unchanged. Input sourcing, VM-exit routing,
+IRQ injection and Linux interaction are not wired or verified by these units.
