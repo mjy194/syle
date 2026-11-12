@@ -25,7 +25,11 @@ static bool sr(void*p,uint32_t f,uint64_t*v){return rd(p,f,v);}
 static bool sw(void*p,uint32_t f,uint64_t v){return wr(p,f,v);}
 static bool clear_event(struct lgs_session*s){return wr(s,0x4016,0)&&wr(s,0x4018,0)&&wr(s,0x401a,0);}
 static bool consume(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_t rip,uint64_t vector,uint64_t event){
- enum lhp_state high=d->high;struct lpfg_state next;struct lnp_state demand=d->demand_pf;
+ enum lhp_state high=d->high;struct lpfg_state next;struct lnp_state demand=d->demand_pf;struct lgp_state gp=d->msr_gp;
+ if(gp.pending){
+  if(d->pf.pending||demand.pending||high==LHP_PENDING||!lgp_observe(&gp,reason,vector,event,&gp))return false;
+  event=0;
+ }
  if(demand.pending){
   if(d->pf.pending||high==LHP_PENDING||!lnp_observe(&demand,reason,vector,event,&demand))return false;
   event=0;
@@ -35,7 +39,7 @@ static bool consume(struct lgd_context*d,struct lgs_session*s,uint64_t reason,ui
   event=0;
  }
  if(!lpfg_observe(&d->pf,reason,rip,vector,event,&next)||!clear_event(s))return false;
- d->high=high;d->pf=next;d->demand_pf=demand;return true;
+ d->high=high;d->pf=next;d->demand_pf=demand;d->msr_gp=gp;return true;
 }
 static bool cr(struct lgs_session*s,uint64_t rip,uint64_t q,unsigned len){
  struct lvc_state v={.rip=rip};struct lvc_change c;
@@ -71,6 +75,7 @@ static bool pf(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_
 }
 static bool msr(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_t rip,unsigned len){
  uint32_t id=(uint32_t)s->native.gpr[2];uint64_t base;
+ if(id==0xce&&reason==31)return lgp_inject(&d->msr_gp,s);
  if(id==0x140)return lmf_apply(d->activation.kind,&d->config.cpu,s->native.gpr,rip,0,reason,len,s->hop.context,s->hop.vmwrite);
  if(id==0x3a)return lfc_read(d->activation.kind,&d->config.cpu,s->native.gpr,rip,0,reason,len,s->hop.context,s->hop.vmwrite);
  if(id==0x8b)return lmc_msr(&d->microcode,s->native.gpr,rip,0,reason,len,s->hop.context,s->hop.vmwrite);
@@ -169,7 +174,7 @@ bool lgd_reset(void*p){
  struct linux_uart_runtime uart;
  if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
  d->generation++;d->legacy_initialized=false;d->legacy=(struct lir){0};d->ports=(struct pcp){0};
- d->post=(struct lp80_state){0};lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
+ d->msr_gp=(struct lgp_state){0};d->post=(struct lp80_state){0};lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
  d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){
@@ -200,9 +205,10 @@ bool lgd_init(struct lgd_context*d,const struct lgd_config*c,struct lgm_service_
 
 /* Authorize an actual owned PF before any IRQ/window side effect. */
 static bool owned_event(const struct lgd_context*d,uint64_t event,uint64_t error,uint64_t len,uint64_t vector){
- unsigned owners=(unsigned)d->pf.pending+(unsigned)d->demand_pf.pending+(unsigned)(d->high==LHP_PENDING);
+ unsigned owners=(unsigned)d->pf.pending+(unsigned)d->demand_pf.pending+(unsigned)(d->high==LHP_PENDING)+(unsigned)d->msr_gp.pending;
  if(vector||owners>1)return false;
  if(!owners)return !event&&!error&&!len;
+ if(d->msr_gp.pending)return !d->msr_gp.failed&&d->msr_gp.count>=1&&d->msr_gp.count<=LGP_MAX_FAULTS&&event==UINT64_C(0x80000b0d)&&!error&&!len;
  if(event!=UINT64_C(0x80000b0e)||len)return false;
  if(d->pf.pending)return !d->pf.closed&&d->pf.count>=1&&d->pf.count<=4&&d->pf.seen==((1u<<d->pf.count)-1)&&error==2;
  if(!d->pf.closed||d->pf.count!=4||d->pf.seen!=15)return false;
@@ -228,15 +234,15 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
   if(!pcp_entry_ok(&d->ports,pic_flags))goto done;
  }else if(!lpic_entry_ok(&d->pic,pic_flags))goto done;
  if(d->config.apic.transactions&&!lpa_before(&d->activation,&d->config.apic,s,&d->config.cpu))goto done;
- if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled){
-  struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending,.high_pending=d->high==LHP_PENDING};
+ if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled||d->msr_gp.pending){
+  struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending,.high_pending=d->high==LHP_PENDING};
   uint64_t b,a,e,v,err,len;
   if(!s->platform.read_field||!s->hop.vmwrite||
      !rd(s,0x6820,&g.rflags)||!rd(s,0x4824,&b)||b>UINT32_MAX||
      !rd(s,0x4826,&a)||a>UINT32_MAX||!rd(s,0x4016,&e)||e>UINT32_MAX||
      !rd(s,0x4408,&v)||v>UINT32_MAX||!rd(s,0x4018,&err)||!rd(s,0x401a,&len))goto done;
   g.blocking=b;g.activity=a;g.entry_info=e;g.vectoring=v;
-  if(!owned_event(d,e,err,len,v))goto done;
+  if(!owned_event(d,e,err,len,v)||(d->msr_gp.pending&&!(g.rflags&UINT64_C(0x10000))))goto done;
   if(d->config.legacy_pic_enabled){
    if(!lir_before(&d->legacy,&g,s,sr,sw))goto done;
   }else if(d->config.apic.transactions){
@@ -244,7 +250,7 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
    if(d->config.apic.transactions->pending&&lams_retry(d->config.apic.transactions)!=LAMS_COMMITTED)goto done;
    if(!d->config.apic.now(d->config.apic.clock_ctx,&now)||!gia_poll(d->config.apic.irq,now)||
       !lgig_before(&d->irq,d->config.apic.irq,&g,s->hop.context,s->hop.vmwrite))goto done;
-  }else if(!lig_before(&d->irq,d->config.irq_adapter,&g,s->hop.context,s->hop.vmwrite))goto done;
+  }else if(d->config.irq_delivery_enabled&&!lig_before(&d->irq,d->config.irq_adapter,&g,s->hop.context,s->hop.vmwrite))goto done;
  }
  d->entry_inflight=true;ok=true;
 done:if(!ok){d->failed=true;d->activation.failed=true;}d->busy=false;return ok;

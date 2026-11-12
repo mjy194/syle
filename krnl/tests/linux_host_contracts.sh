@@ -85,3 +85,5 @@ sh krnl/tests/linux_port80_dispatch.sh
 sh krnl/tests/linux_feature_control_dispatch.sh
 
 sh krnl/tests/linux_misc_features_dispatch.sh
+
+sh krnl/tests/linux_msr_gp_dispatch.sh
