@@ -26,8 +26,10 @@ struct lgd_config {
  bool (*sync_irq)(void*,unsigned,bool); /* explicit logical sink, no fake APIC */
 };
 #include "linux_debug_disabled.h"
+#include "linux_pic_mask.h"
 struct lgd_context {
  struct ldd_state debug_disabled;
+ struct lpic_state pic;
  struct lgd_config config;
  struct lpit2 pit;uint64_t ticks,staged_tick;bool clock_staged;
  struct lpa_state activation;
