@@ -15,6 +15,8 @@ struct lgm_service_ops {
  /* Optional pair, same lifecycle/outcome contract as lgs_platform. */
  bool (*before_entry)(void *,struct lgs_session *);
  bool (*after_entry)(void *,struct lgs_session *,const struct lgs_entry_result *);
+ /* Optional after owned RAM prepare, before enable; false retains ownership. */
+ bool (*prepare_guest)(void *,struct lgs_session *);
 };
 bool linux_guest_manager_install(const struct lgm_service_ops *);
 #endif

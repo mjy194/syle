@@ -47,6 +47,9 @@ struct lvh_context {
  struct lvp_plan plan;
  uint64_t basic,vmxon_page,vmcs_page,eptp;
  bool active,ready,quarantined;
+ /* CREATE diagnosis: 1 guard,2 caps,3 capture,4 plan,5 pages,6 VMXON,
+  * 7 VMCLEAR/VMPTRLD,8 guest writes,9 host writes,10 ready. */
+ unsigned open_stage;
 };
 bool lvh_open(struct lvh_context*,const struct lvh_ops*,const struct linux_guest_memory*,uint64_t exit_rsp,uint64_t exit_rip);
 bool lvh_close(struct lvh_context*);

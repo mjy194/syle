@@ -31,6 +31,8 @@ struct lgs_platform {
   * false from either latches failure: caller must stop/destroy, not retry. */
  bool (*before_entry)(void *,struct lgs_session *);
  bool (*after_entry)(void *,struct lgs_session *,const struct lgs_entry_result *);
+ /* Optional after owned RAM prepare, before enable; false retains ownership. */
+ bool (*prepare_guest)(void *,struct lgs_session *);
 };
 struct lgs_session {
  struct linux_guest_memory memory;
@@ -46,6 +48,9 @@ struct lgs_session {
  uint64_t fallback_rsp,fallback_rip;
  bool configured,enabled,prepared,failed;
  uint64_t exits,last_reason;
+ /* Last attempted CREATE substage, retained for bounded diagnostics. */
+ unsigned prepare_stage;
+ unsigned step_stage,step_result;
 };
 /* Before publication, initialize a fresh zeroed object with immutable input
  * buffers, validated ops and aligned resident fallback stack/RIP. No hardware. */

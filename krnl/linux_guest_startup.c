@@ -3,7 +3,14 @@
 #ifndef MG_FIXED_INPUTS_VERIFIED
 #error "Managed guest requires pinned-image hash gate before compiling startup"
 #endif
+#ifdef MG_EXPERIMENTAL_APIC
+#include "linux_profile_service.h"
+static struct lps_context profile;
+static bool synthetic_time(void*x,uint64_t*t){(void)x;uint32_t a,d;
+ __asm__ volatile("lfence;rdtsc":"=a"(a),"=d"(d)::"memory");*t=((uint64_t)d<<32)|a;return true;}
+#else
 static struct lgd_context dispatcher;
+#endif
 static struct lgm_service_ops service;
 /* Explicit ownership of logical UART level only. NOT a LAPIC injection sink.
  * Guest CPUID hides APIC; this profile is polled UART until a routed IRQ backend
@@ -24,5 +31,9 @@ bool linux_guest_startup_install(void) {
  cpu(1,&a,&b,&x,&c.cpu.basic_edx);
  cpu(0x80000001,&a,&b,&x,&c.cpu.extended_edx);
  cpu(0x80000008,&a,&b,&x,&d);c.cpu.physical_bits=a&255;
+#ifdef MG_EXPERIMENTAL_APIC
+ return lps_init(&profile,&c,0,synthetic_time,&service)&&linux_guest_manager_install(&service);
+#else
  return lgd_init(&dispatcher,&c,&service)&&linux_guest_manager_install(&service);
+#endif
 }

@@ -62,21 +62,29 @@ bool lvh_close(struct lvh_context*c){
  return ok;
 }
 bool lvh_open(struct lvh_context*c,const struct lvh_ops*o,const struct linux_guest_memory*m,uint64_t rsp,uint64_t rip){
+ if(c)c->open_stage=1;
  if(!c||!ops_ok(o)||!m||c->quarantined||c->active||c->ready||c->vmxon_page||c->vmcs_page||!rsp||!rip||(rsp&15)||!canon(rsp)||!canon(rip))return false;
  c->owner=*o;c->eptp=m->eptp;
- if(!caps(c)||!snapshot(c)||!lvp_prepare(m,&c->caps,&c->plan))return false;
+ c->open_stage=2;if(!caps(c))return false;
+ c->open_stage=3;if(!snapshot(c))return false;
+ c->open_stage=4;if(!lvp_prepare(m,&c->caps,&c->plan))return false;
+ c->open_stage=5;
  if(!region(c,m,&c->vmxon_page)||!region(c,m,&c->vmcs_page))goto fail;
+ c->open_stage=6;
  if(!o->vmxon(o->context,c->vmxon_page))goto fail;
  c->active=true;
+ c->open_stage=7;
  if(!o->vmclear(o->context,c->vmcs_page)||!o->vmptrld(o->context,c->vmcs_page))goto fail;
+ c->open_stage=8;
  for(unsigned i=0;i<c->plan.count;i++)if(!o->vmwrite(o->context,c->plan.fields[i].encoding,c->plan.fields[i].value))goto fail;
+ c->open_stage=9;
  struct lvh_host*h=&c->host;
 #define W(k,v) do{if(!o->vmwrite(o->context,(k),(v)))goto fail;}while(0)
  W(0xc00,h->es);W(0xc02,h->cs);W(0xc04,h->ss);W(0xc06,h->ds);W(0xc08,h->fs);W(0xc0a,h->gs);W(0xc0c,h->tr);
  W(0x4c00,h->sysenter_cs);W(0x2c00,h->pat);W(0x2c02,h->efer);
  W(0x6c00,h->cr0);W(0x6c02,h->cr3);W(0x6c04,h->cr4);W(0x6c06,h->fs_base);W(0x6c08,h->gs_base);W(0x6c0a,h->tr_base);W(0x6c0c,h->gdt_base);W(0x6c0e,h->idt_base);W(0x6c10,h->sysenter_esp);W(0x6c12,h->sysenter_eip);W(0x6c14,rsp);W(0x6c16,rip);
 #undef W
- c->ready=true;return true;
+ c->ready=true;c->open_stage=10;return true;
 fail:
  (void)lvh_close(c);return false;
 }

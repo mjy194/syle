@@ -24,10 +24,18 @@ static bool dispatch(void*x,struct lgs_session*z,uint32_t r){(void)x;assert(z==&
 static void fatal(void*x){(void)x;if(expect_fatal)longjmp(fatal_jump,1);assert(!"unexpected fatal");}
 static bool write(void*x,uint32_t field,uint64_t value){(void)x;assert(field==0x482e&&value==(1u<<24));++f.writes;return true;}
 static bool invalidate(void*x,uint64_t eptp){(void)x;assert(eptp==0x101e);return true;}
+static bool hook_fail;static unsigned hook_calls;
+static bool prepare_hook(void*x,struct lgs_session*z){(void)x;hook_calls++;
+ assert(z->memory.prepared&&!z->prepared&&!z->enabled&&!z->host.active&&z->prepare_stage==9);
+ assert(!z->native.resume&&!z->exits&&!z->last_reason);return !hook_fail;}
 int main(void){
  const char asset='x';struct lvh_ops h={.vmwrite=write,.invept=invalidate};struct lvs_ops v={0};
  struct lgs_platform p={.enable=enable,.disable=disable,.safe=safe,.read_field=rd,.dispatch=dispatch,.fatal=fatal};
  assert(lgs_configure(&s,&h,&v,&p,&asset,1,&asset,1,"",0x1000,0x1000));
+ s.platform.prepare_guest=prepare_hook;hook_fail=true;s.native.resume=1;s.exits=5;s.last_reason=10;
+ assert(lgs_guest_backend.prepare(&s,1)&&s.failed&&s.memory.prepared&&s.prepare_stage==9&&!f.enables&&!f.opens);
+ assert(hook_calls==1);assert(lgs_guest_backend.prepare(&s,1)&&hook_calls==1);
+ assert(!lgs_guest_backend.release(&s));hook_fail=false;f=(__typeof__(f)){0};
  assert(!lgs_configure(&s,&h,&v,&p,&asset,1,&asset,1,"",0x1000,0x1000));
  assert(lgs_guest_backend.prepare(&s,2));assert(!f.prepares);
  assert(!lgs_guest_backend.prepare(&s,1));assert(s.native.gpr[4]==0x90000);

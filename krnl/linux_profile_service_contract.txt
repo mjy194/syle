@@ -1,0 +1,27 @@
+Experimental service opt-in candidate. No default boot activation or VM execution.
+Base consumer archive SHA91e8a6a4ca51a0924df92dbeff3b92a8c3d32d594e150bbfba27201ca47177e7.
+Only merge the session/manager hook and startup #ifdef hunks into current sources;
+retain all newer diagnostics. Do not replace current managed-guest.mk with the
+old consumer copy. managed-apic-profile.mk is a new additive -f make fragment,
+uses current MG_MODS plus dependencies and private mp- objects. Full final link
+must be verified in publisher's complete current tree; this candidate has host
+ASan/UBSan and individual native C compile checks, not a linked boot image yet.
+
+Singleton lps_context stable for kernel lifetime. Domain counter increments on
+successful reset attempts and never wraps; counter must not be zeroed after
+install. Fresh models and dispatcher are reconstructed only after the previously
+seen session has no active/ready/quarantined VMX, no VMX pages, no prepared RAM,
+no residual owned page/table tokens and no dirty host. STOP is not teardown.
+Device quarantine may be discarded only with proof of entire guest destruction.
+
+A failed lgm_prepare before the hook is not visible to the service; guest_control
+and manager retain responsibility for forbidding CREATE until dispose succeeds.
+prepare_guest runs inside native lifecycle callback's established kernel CR3,
+after lgm_prepare but before enable, with fresh resume/cr2/exits/last_reason.
+It retains RAM on failure, stage9 distinguishes the hook without renumbering
+existing stages1..8. The baseline NULL hook retains prior behavior.
+
+Clock is LFENCE/RDTSC synthetic ticks only, not calibrated LAPIC time and not a
+claim Linux timer initialization works. No changes to CPUID policy before the
+actual per-entry gate. Service init intent does not constitute verification.
+Control's latest diagnostic context/host files are unmodified dependencies.

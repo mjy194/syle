@@ -2,6 +2,8 @@
 #include "ring3.h"
 #include "memory.h"
 #include "paging.h"
+#include "managed_host_context.h"
+#include "linux_pf_diagnostic.h"
 #include "vmx_memory.h"
 #include "../efi/src/exceptions.h"
 extern const unsigned char linux_kernel_start[],linux_kernel_end[],linux_initrd_start[],linux_initrd_end[];
@@ -51,28 +53,82 @@ static bool read_field(void*x,uint32_t f,uint64_t*v) {
 static bool dispatch(void*x,struct lgs_session*s,uint32_t reason) {
  (void)x;return platform.service.dispatch&&platform.service.dispatch(platform.service.ctx,s,reason);
 }
+static bool prepare_guest(void*x,struct lgs_session*s){
+ (void)x;return platform.service.prepare_guest(platform.service.ctx,s);
+}
 static bool before_entry(void*x,struct lgs_session*s) {
  (void)x;return platform.service.before_entry(platform.service.ctx,s);
 }
 static bool after_entry(void*x,struct lgs_session*s,const struct lgs_entry_result*r) {
  (void)x;return platform.service.after_entry(platform.service.ctx,s,r);
 }
-/* int80 retains user DS/ES. Set valid kernel selectors for VMCS host capture,
- * then restore the exact caller values before returning through IRET. */
-struct segments { uint16_t ds,es; };
-static struct segments enter_segments(void) {
- struct segments s;__asm__ volatile("mov %%ds,%0;mov %%es,%1":"=r"(s.ds),"=r"(s.es));
- uint16_t k=0x10;__asm__ volatile("mov %0,%%ds;mov %0,%%es"::"r"(k):"memory");return s;
+/* int80 uses the Ring3-owned root and a null SS. Temporarily enter the
+ * already established supervisor root; never weaken paging WB proof. */
+static uint64_t context_root(void*x){(void)x;uint64_t v;__asm__ volatile("mov %%cr3,%0":"=r"(v));return v;}
+static void context_set_root(void*x,uint64_t v){(void)x;__asm__ volatile("mov %0,%%cr3"::"r"(v):"memory");}
+static struct mhc_selectors context_selectors(void*x){
+ (void)x;struct mhc_selectors s;
+ __asm__ volatile("mov %%ds,%0;mov %%es,%1;mov %%ss,%2":"=r"(s.ds),"=r"(s.es),"=r"(s.ss));return s;
 }
-static void leave_segments(struct segments s) {__asm__ volatile("mov %0,%%ds;mov %1,%%es"::"r"(s.ds),"r"(s.es):"memory");}
+static void context_set_selectors(void*x,struct mhc_selectors s){
+ (void)x;__asm__ volatile("mov %0,%%ds;mov %1,%%es;mov %2,%%ss"::"r"(s.ds),"r"(s.es),"r"(s.ss):"memory");
+}
+static const struct mhc_ops context_ops={0,context_root,context_set_root,context_selectors,context_set_selectors};
+static struct mhc_saved enter_context(void){
+ struct mhc_saved s={0};if(!mhc_enter(&s,&context_ops,paging_root()))fatal(0);return s;
+}
+static void leave_context(struct mhc_saved*s){if(!mhc_leave(s,&context_ops))fatal(0);}
 static int prepare(void*c,uint64_t p){
  struct lgs_session *g=c;
- if(p!=SYLE_GUEST_BOOT_PROFILE||g->prepared||g->enabled||g->failed||!platform.service.reset(platform.service.ctx))return 1;
- struct segments s=enter_segments();int r=lgs_guest_backend.prepare(c,p);leave_segments(s);return r;
+ if(p!=SYLE_GUEST_BOOT_PROFILE||g->prepared||g->enabled||g->failed||!platform.service.reset(platform.service.ctx)){
+  log_text("MANAGED.CREATE rejected before session prepare\n");return 1;
+ }
+ uint16_t incoming_ss;__asm__ volatile("mov %%ss,%0":"=r"(incoming_ss));
+ struct mhc_saved s=enter_context();int r=lgs_guest_backend.prepare(c,p);
+ if(r){
+  log_text("MANAGED.CREATE failed prepare_stage=");log_hex(g->prepare_stage);
+  log_text(" open_stage=");log_hex(g->host.open_stage);
+  log_text(" incoming_ss=");log_hex(incoming_ss);
+  log_text("\n");
+ }
+ leave_context(&s);return r;
 }
-static int start(void*c){struct segments s=enter_segments();int r=lgs_guest_backend.start(c);leave_segments(s);return r;}
-static int stop(void*c){struct segments s=enter_segments();int r=lgs_guest_backend.stop(c);leave_segments(s);return r;}
-static int release(void*c){struct segments s=enter_segments();int r=lgs_guest_backend.release(c);leave_segments(s);return r;}
+static void diagnostic_field(const char *name,uint32_t field){
+ uint64_t v;log_text(name);if(read_field(0,field,&v))log_hex(v);else log_text("unavailable");
+}
+static void pf_diagnostic(struct lgs_session*g){
+ struct lgpd_snapshot d;if(!lgpd_collect(g,&d))return;
+ log_text("MANAGED.PF valid=");log_hex(d.valid);log_text(" r12=");log_hex(d.r12);log_text("\n");
+ for(unsigned i=0;i<LGPD_FIELDS;i++){log_text("PF.field ");log_hex(i);log_text("=");log_hex(d.value[i]);log_text("\n");}
+ for(unsigned i=0;i<LGPD_TRACES;i++){
+  log_text("PF.trace ");log_hex(i);log_text(" va=");log_hex(d.va[i]);log_text(" status=");log_hex(d.trace[i].status);log_text(" gpa=");log_hex(d.trace[i].gpa);log_text("\n");
+  for(unsigned j=0;j<d.trace[i].count&&j<4;j++){log_text("PF.pte address=");log_hex(d.trace[i].address[j]);log_text(" value=");log_hex(d.trace[i].entry[j]);log_text("\n");}
+ }
+ log_text("PF.data_valid=");log_hex(d.data_valid);log_text(" gate=");log_hex(d.gate[0]);log_hex(d.gate[1]);log_text(" csdesc=");log_hex(d.csdesc);log_text("\n");
+ log_text("PF.instruction=");log_hex(d.bytes[0]);log_hex(d.bytes[1]);log_text(" handler=");log_hex(d.handler_bytes[0]);log_hex(d.handler_bytes[1]);log_text("\n");
+}
+static int start(void*c){
+ struct mhc_saved saved=enter_context();struct lgs_session*g=c;
+ int r=lgs_guest_backend.start(c);
+ if(r){
+  log_text("MANAGED.SLICE failed stage=");log_hex(g->step_stage);
+  log_text(" state_result=");log_hex(g->step_result);
+  log_text(" accepted_exits=");log_hex(g->exits);
+  if(g->step_stage>=2&&g->host.active&&g->host.ready){
+   /* Read-only raw snapshot after safe host restoration. Emulation may have
+    * partially updated VMCS/GPRs; these are diagnostics, not validated exits. */
+   diagnostic_field(" raw_reason=",0x4402);diagnostic_field(" raw_rip=",0x681e);
+   diagnostic_field(" raw_qual=",0x6400);diagnostic_field(" raw_event=",0x4404);
+   diagnostic_field(" raw_vectoring=",0x4408);diagnostic_field(" raw_instruction_error=",0x4400);
+   log_text(" raw_rcx=");log_hex(g->native.gpr[2]);log_text("\n");
+   pf_diagnostic(g);
+  }
+  log_text("\n");
+ }
+ leave_context(&saved);return r;
+}
+static int stop(void*c){struct mhc_saved s=enter_context();int r=lgs_guest_backend.stop(c);leave_context(&s);return r;}
+static int release(void*c){struct mhc_saved s=enter_context();int r=lgs_guest_backend.release(c);leave_context(&s);return r;}
 static int send(void*c,uint8_t b){(void)c;return platform.service.send?platform.service.send(platform.service.ctx,b):-(int)SYLE_GUEST_ENOTSUP;}
 static int recv(void*c){(void)c;return platform.service.recv?platform.service.recv(platform.service.ctx):-(int)SYLE_GUEST_ENOTSUP;}
 static const struct guest_backend guest_ops={.prepare=prepare,.start=start,.stop=stop,.release=release,.console_send=send,.console_recv=recv};
@@ -84,7 +140,8 @@ bool linux_guest_manager_install(const struct lgm_service_ops *service) {
  struct lgs_platform ops={.enable=enable,.disable=disable,.safe=safe,
   .read_field=read_field,.dispatch=dispatch,.fatal=fatal,
   .before_entry=service->before_entry?before_entry:0,
-  .after_entry=service->after_entry?after_entry:0};
+  .after_entry=service->after_entry?after_entry:0,
+  .prepare_guest=service->prepare_guest?prepare_guest:0};
  if(!lgs_configure(&session,&session.hop,&session.sop,&ops,
  linux_kernel_start,(size_t)(linux_kernel_end-linux_kernel_start),
  linux_initrd_start,(size_t)(linux_initrd_end-linux_initrd_start),

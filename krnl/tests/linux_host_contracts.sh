@@ -46,6 +46,9 @@ run acpi-reduced-install krnl/tests/linux_acpi_reduced_install.c krnl/linux_acpi
 sh krnl/tests/linux_profile_gate.sh
 sh krnl/tests/linux_profile_activation.sh
 sh krnl/tests/linux_profile_prepare.sh
+sh krnl/tests/linux_profile_service.sh
+sh krnl/tests/linux_pf_diagnostic.sh
+sh krnl/tests/managed_host_context.sh
 sh krnl/tests/linux_profile_lifecycle.sh
 sh krnl/tests/linux_nonpresent_pf.sh
 sh krnl/tests/linux_nonpresent_dispatch.sh

@@ -16,28 +16,46 @@ bool lgs_configure(struct lgs_session*s,const struct lvh_ops*h,const struct lvs_
 }
 static int prepare(void*ctx,uint64_t profile) {
  struct lgs_session*s=ctx;
+ s->prepare_stage=1;
  if(!s->configured||profile!=SYLE_GUEST_BOOT_PROFILE||s->prepared||s->enabled||s->failed)return 1;
+ s->host.open_stage=0;
+ s->prepare_stage=2;
  if(!lvs_init(&s->state))return 1;
+ s->prepare_stage=3;
  if(!lgm_prepare(&s->memory,&s->hop.memory,s->kernel,s->kernel_size,s->initrd,s->initrd_size,s->command_line))return 1;
+ /* Fresh CREATE identity before optional owned-RAM installation; no VMX yet. */
+ s->native.resume=0;s->native.cr2=0;s->exits=0;s->last_reason=0;
+ if(s->platform.prepare_guest){
+  s->prepare_stage=9;
+  if(!s->platform.prepare_guest(s->platform.ctx,s)){s->failed=true;return 1;}
+ }
+ s->prepare_stage=4;
  if(!s->platform.enable(s->platform.ctx))return 1;
  s->enabled=true;
- if(!lvh_open(&s->host,&s->hop,&s->memory,s->fallback_rsp,s->fallback_rip)||
-    !s->hop.invept(s->hop.context,s->memory.eptp)) {host_safe(s);return 1;}
+ s->prepare_stage=5;
+ if(!lvh_open(&s->host,&s->hop,&s->memory,s->fallback_rsp,s->fallback_rip)) {host_safe(s);return 1;}
+ s->prepare_stage=6;
+ if(!s->hop.invept(s->hop.context,s->memory.eptp)) {host_safe(s);return 1;}
+ s->prepare_stage=7;
  if(s->host.caps.timer_shift>28) {host_safe(s);return 1;}
  for(unsigned j=0;j<15;j++)s->native.gpr[j]=s->host.plan.gpr[j];
- s->native.cr2=0;s->native.resume=0;s->exits=0;s->last_reason=0;s->prepared=true;
+ s->native.cr2=0;s->native.resume=0;s->exits=0;s->last_reason=0;s->prepared=true;s->prepare_stage=8;
  host_safe(s);return 0;
 }
 static int start(void*ctx) {
  struct lgs_session*s=ctx;
+ s->step_stage=1;s->step_result=255;
  if(!s->prepared||s->failed||!s->enabled||!s->host.ready||!s->host.active)return 1;
  host_safe(s);
  /* Mandatory preemption timer in lvp_prepare bounds even a non-exiting guest.
   * One entry per call; retain VMCS launch state and all guest fields in place. */
+ s->step_stage=2;
  if(!s->hop.vmwrite(s->hop.context,0x482e,UINT64_C(1)<<(28-s->host.caps.timer_shift)))goto fail;
+ s->step_stage=3;
  if(s->platform.before_entry&&!s->platform.before_entry(s->platform.ctx,s))goto fail;
+ s->step_stage=4;
  enum lvs_result r=lvs_run(&s->state,&s->sop);
- host_safe(s);
+ host_safe(s);s->step_result=(unsigned)r;s->step_stage=5;
  struct lgs_entry_result result={.state_result=r};
  uint64_t reason=0,vectoring=0;
  if(r==LVS_EXIT) {
@@ -47,13 +65,16 @@ static int start(void*ctx) {
    result.fields_valid=true;result.reason=(uint32_t)reason;result.vectoring=(uint32_t)vectoring;
   }
  }
+ s->step_stage=6;
  if(s->platform.after_entry&&!s->platform.after_entry(s->platform.ctx,s,&result))goto fail;
+ s->step_stage=7;
  if(r!=LVS_EXIT||!result.fields_valid||reason>UINT16_MAX||(vectoring&(UINT64_C(1)<<31)))goto fail;
  s->last_reason=reason;++s->exits;
  /* Preemption exits preserve guest RIP and activity. Other exits require an
   * explicit emulator; never reinterpret an unhandled exit as successful boot. */
+ s->step_stage=8;
  if(!s->platform.dispatch(s->platform.ctx,s,(uint32_t)reason))goto fail;
- s->native.resume=1;
+ s->native.resume=1;s->step_stage=9;
  host_safe(s);return 0;
 fail:
  s->failed=true;host_safe(s);return 1;
