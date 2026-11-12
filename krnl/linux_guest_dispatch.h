@@ -5,9 +5,11 @@
 #include "linux_uart_runtime.h"
 #include "linux_microcode_model.h"
 #include "linux_irq_glue.h"
+#include "linux_apic_dispatch.h"
 struct lgs_session;struct lgm_service_ops;struct lgs_entry_result;
 struct lgd_config {
  struct lvp_cpu_features cpu;
+ struct lad_config apic; /* Optional entire guest_apic domain; never mix lia. */
  struct lia *irq_adapter;
  bool irq_delivery_enabled,irq_platform_ready; /* Default false. Platform-ready
   * requires coherent guest APIC MSRs/MMIO/firmware routing, not just a sink. */

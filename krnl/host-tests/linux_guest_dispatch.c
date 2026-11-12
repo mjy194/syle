@@ -11,6 +11,7 @@ static struct lgd_context dispatch;
 static struct mock mock;
 static bool rd(void*p,uint32_t f,uint64_t*v){struct mock*m=p;assert(f<0x7000);if(++m->reads==m->failread)return false;*v=m->f[f];return true;}
 static bool wr(void*p,uint32_t f,uint64_t v){struct mock*m=p;assert(f<0x7000);m->f[f]=v;return ++m->writes!=m->failwrite;}
+static bool clock_now(void*p,uint64_t*out){(void)p;*out=0;return true;}
 static bool inv(void*p,uint64_t e){struct mock*m=p;(void)e;m->invs++;return !m->invfail;}
 static bool irq(void*p,unsigned n,bool level){struct mock*m=p;assert(n==4);(void)level;if(m->reenter){assert(!lgd_reset(&dispatch));assert(!lgd_dispatch(&dispatch,&session,52));assert(lgd_recv(&dispatch)==-16);}return !m->irqfail;}
 static void setup(bool fixed){
@@ -51,6 +52,24 @@ int main(void){
  setup(false);dispatch.exits=dispatch.config.max_exits;assert(!lgd_before_entry(&dispatch,&session)&&dispatch.failed&&!mock.writes);
  setup(false);struct lgd_config enable=dispatch.config;struct lia adapter={.enabled=true};enable.irq_adapter=&adapter;enable.irq_delivery_enabled=true;enable.irq_platform_ready=true;
  struct lgd_context fresh={0};struct lgm_service_ops out={0};assert(!lgd_init(&fresh,&enable,&out)&&!fresh.configured&&!out.ctx);
+ setup(false);struct guest_apic ga;struct ioapic gio;struct gia gdomain;struct lams_state gtx={0};struct lio_state giox={0};
+ guest_apic_init_mode(&ga,0,false);ioapic_init(&gio,gia_enqueue,&gdomain);assert(gia_init(&gdomain,&ga,&gio,99,true));assert(lams_init(&gtx,&ga,99,&gdomain,gia_notify));assert(lio_init(&giox,&gdomain));
+ enable=dispatch.config;enable.apic=(struct lad_config){.transactions=&gtx,.irq=&gdomain,.now=clock_now,.ioapic=&giox};enable.irq_delivery_enabled=enable.irq_platform_ready=true;enable.irq_adapter=NULL;enable.sync_irq=gia_irq4;enable.irq_ctx=&gdomain;fresh=(struct lgd_context){0};out=(struct lgm_service_ops){0};assert(!lgd_init(&fresh,&enable,&out)&&!fresh.configured&&!out.ctx);
+
+ /* Internal lifecycle fault fixture: production init above rejects this CPU
+  * profile. Exercise receipt ordering without claiming an enabled profile. */
+ struct guest_apic_effect ge;ga.x2apic=true;assert(guest_apic_write(&ga,0x80f,0x1ff,0,&ge));
+ uint32_t routevalue=0x18;assert(gia_ioapic_mmio(&gdomain,0,4,true,&routevalue)==DEVICE_HANDLED);routevalue=0x8044;assert(gia_ioapic_mmio(&gdomain,0x10,4,true,&routevalue)==DEVICE_HANDLED);
+ assert(gia_irq4(&gdomain,4,true)&&guest_apic_accept(&ga,0x44));assert(guest_apic_write(&ga,0x80f,0xff,0,&ge));uint64_t eg[15]={0};eg[2]=0x80b;
+ assert(lams_apply(&gtx,eg,0x10000,0,32,2,0,1u<<21,1u<<9,true,&mock,wr)==LAMS_EFFECT_PENDING);
+ assert(guest_apic_write(&ga,0x80f,0x1ff,0,&ge));dispatch.config=enable;
+ assert(lgd_before_entry(&dispatch,&session)&&!gtx.pending&&!gdomain.receipt_pending&&dispatch.entry_inflight);
+ receipt=(struct lgs_entry_result){.state_result=LVS_EXIT,.fields_valid=true,.reason=52};assert(lgd_after_entry(&dispatch,&session,&receipt));
+ assert(guest_apic_accept(&ga,0x44)&&guest_apic_write(&ga,0x80f,0xff,0,&ge));
+ assert(lams_apply(&gtx,eg,0x10000,0,32,2,0,1u<<21,1u<<9,true,&mock,wr)==LAMS_EFFECT_PENDING);
+ unsigned beforepending=mock.writes;assert(!lgd_before_entry(&dispatch,&session)&&dispatch.failed&&!dispatch.entry_inflight&&gtx.pending&&gdomain.receipt_pending&&mock.writes==beforepending);
+ /* Quiescent session alone cannot discard a reserved/failed device domain. */
+ dispatch.config.apic=enable.apic;gdomain.reserved=true;session.prepared=false;assert(!lgd_reset(&dispatch));
  setup(false);adapter.reserved=true;dispatch.config.irq_adapter=&adapter;assert(!lgd_reset(&dispatch));
 
  setup(false);session.native.gpr[0]=1;assert(run(10)&&mock.f[0x681e]==0x10002);assert(!(session.native.gpr[3]&(1u<<9)));assert(!lgd_reset(&dispatch));

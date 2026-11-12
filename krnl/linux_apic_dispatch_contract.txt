@@ -1,0 +1,54 @@
+Unified optional APIC dispatcher bridge, host-only integration checkpoint.
+Delta baseline: startup_guest 3416583ce77885eecd09483563d89f9562d6e83b.
+Four replaced dispatcher/header/test/script files have an explicit baseline
+patch; apply/review against current tree, never overwrite unrelated new changes.
+
+New lad_config binds lams transactions + guest IRQ adapter + FEC transaction to
+one complete guest_apic/IOAPIC domain. Same model pointer, generation, EOI sink
+and gia_notify callback are mandatory. New profile cannot mix legacy lia.
+UART logical sink must be gia_irq4 for that exact domain. Clock callback supplies
+explicit synthetic device time; no implicit calibration or native TSC read.
+
+Production init still rejects enabled new domain under current published CPUID
+(no APIC/x2APIC). irq_platform_ready alone cannot bypass actual capabilities or
+model/IOAPIC/clock/sink bindings. Complete CPU/firmware/runtime enable is a later,
+separately reviewed profile change. Current build does NOT support Linux IRQs.
+Missing platform pieces include consistent enumerated BSP/APIC addresses/routes,
+mode/MSR semantics, platform clock exposure, interrupt-window and HLT runtime
+handling, and restricted unsupported NMI/ExtINT/INIT/SIPI policies. Timer-slice
+retry opportunities are not a claim of full interrupt timing correctness.
+
+MSR1B/800..8FF route to staged APIC MSR transactions. EPT reason48 routes through
+actual VMCS snapshot and trusted memory.pages/owner.map to safe fetch/decode.
+FEE page uses xAPIC transaction; FEC page uses entire-domain IOAPIC transaction.
+Unknown targets/opcodes/widths/qualification/permissions fail closed. ES/CS/SS/DS
+bases use exact VMCS fields6806/6808/680A/680C. No raw GPA host pointer cast.
+Entry metadata/vectoring must be entirely zero before these operations; conservative
+stops from residual fields are intentional, not permission to relax evidence.
+
+Before entry: retry a committed level-EOI receipt first; if unresolved fail-stop
+without stage/entry. Poll timer only while entire domain exclusive, then source-
+aware IRQ reservation/stage. Nothing (including poll) may mutate a reserved
+snapshot. After entry: actual typed receipt, cleanup, guest_apic_accept with
+TMR/pending_level semantics, then ordinary exit emulation. Timer/unknown receipt
+quarantines; do not infer delivery from entry.valid clear. PF/highPF ownership
+prevents external staging. DEFER_WINDOW does not program VMX window controls.
+
+Last budgeted exit can reconcile its receipt, then fails without another entry.
+Reset cannot discard reserved/quarantined/pending-receipt devices; entire guest
+and device domain must be destroyed and freshly reconstructed first. STOP does
+not satisfy this. Header ABI changed: recompile every consumer including boot.
+
+Verified dependency APIs: paired session hooks v1, guest_apic/db6fb383..., MOV
+0ef536ec..., private-memory f6aa11ee..., APIC MSR202f5c29..., xAPIC MMIOcec06e9d...,
+reviewed FEC transaction, reviewed multi-source gia with local-timer route fix.
+
+Host tests/scripts:
+- linux_apic_dispatch: real VMCS mappings/private RAM/domain/FEE/FEC/MSR
+- linux_guest_irq_glue: actual local timer, UART level/EOI repeat, PF/defer/quarantine
+- linux_guest_dispatch: default regression, explicit APIC init rejection, receipt
+  retry success/failure ordering fixture and reset ownership
+Lifecycle fixture may directly populate internal config to test hooks; it is not
+an enabled production profile. All ASan/UBSan and freestanding checks passed.
+No VM executed. Owner must separately compile complete managed target and run
+independent authorized acceptance. No session/core/boot/old runner files changed.

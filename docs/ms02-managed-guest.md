@@ -34,3 +34,8 @@ The complete frozen combination received independent review and fresh full
 recompilation. Linux shell, input/IRQ runtime behavior and USER-02 end-to-end
 acceptance still require separate validation. Terminal work is not part of this
 checkpoint.
+
+The unified APIC bridge now has compiled FEE/FEC MMIO and MSR routes and uses
+paired IRQ hooks. This is still an inactive optional configuration: the
+production CPU profile does not advertise APIC and the default startup does
+not enable it. Host routing tests are distinct from Linux IRQ acceptance.
