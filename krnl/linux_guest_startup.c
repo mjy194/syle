@@ -3,6 +3,9 @@
 #ifndef MG_FIXED_INPUTS_VERIFIED
 #error "Managed guest requires pinned-image hash gate before compiling startup"
 #endif
+#if defined(MG_LEGACY_PIC) && defined(MG_EXPERIMENTAL_APIC)
+#error "Legacy PIC and experimental APIC profiles are mutually exclusive"
+#endif
 #ifdef MG_EXPERIMENTAL_APIC
 #include "linux_profile_service.h"
 static struct lps_context profile;
@@ -22,6 +25,9 @@ static void cpu(uint32_t leaf,uint32_t *a,uint32_t *b,uint32_t *c,uint32_t *d) {
 }
 bool linux_guest_startup_install(void) {
  struct lgd_config c={.max_exits=1u<<20,.fixed_input_verified=true,.sync_irq=retain_level};
+ #ifdef MG_LEGACY_PIC
+ c.legacy_pic_enabled=true;
+ #endif
  uint32_t a,b,x,d;
  cpu(0,&c.max_basic,&c.vendor_b,&c.vendor_c,&c.vendor_d);
  cpu(0x80000000,&c.max_extended,&b,&x,&d);

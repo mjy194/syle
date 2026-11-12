@@ -34,7 +34,7 @@ bool pic0_access(struct pic0*s,uint16_t port,bool write,uint8_t*v){
   if(n.phase==1){if(b<32||(b&7))return false;n.vector=b;n.phase=2;}
   else if(n.phase==2){if(b!=4)return false;n.phase=3;}
   else if(n.phase==3){if(b!=1&&b!=3)return false;n.phase=0;n.initialized=true;n.aeoi=b==3;}
-  else {if(!mask_ok(b)||(!n.initialized&&b!=255))return false;n.imr=b;n.mask_pending=false;}
+  else {if(!mask_ok(b)||(!n.initialized&&b!=255&&b!=251))return false;n.imr=b;n.mask_pending=false;}
  }
  if(!valid(&n))return false;
  *s=n;*v=b;return true;

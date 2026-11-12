@@ -1,0 +1,6 @@
+#include "pit0_transaction.h"
+#include <assert.h>
+#include <string.h>
+#include <stdio.h>
+struct sink {bool fail;unsigned writes;uint64_t rip;};static bool wr(void*c,uint32_t f,uint64_t v){struct sink*s=c;assert(f==0x681e);s->writes++;if(s->fail)return false;s->rip=v;return true;}
+int main(void){struct pt0 p;assert(pt0_init(&p,1));uint8_t x=0x11;assert(pic0_access(&p.pic,0x20,true,&x));x=0x20;assert(pic0_access(&p.pic,0x21,true,&x));x=4;assert(pic0_access(&p.pic,0x21,true,&x));x=1;assert(pic0_access(&p.pic,0x21,true,&x));x=0xfe;assert(pic0_access(&p.pic,0x21,true,&x));uint64_t g[15]={0x34};struct sink w={0};assert(pt0_io(&p,g,0x1000,0,30,0x430040,2,1,&w,wr));g[0]=3;assert(pt0_io(&p,g,0x1002,0,30,0x400040,2,2,&w,wr));g[0]=0;assert(pt0_io(&p,g,0x1004,0,30,0x400040,2,3,&w,wr));assert(pt0_tick(&p,7));uint8_t vector;assert(pic0_peek(&p.pic,&vector)&&vector==0x20);struct pt0 saved=p;g[0]=0;w.fail=true;assert(!pt0_io(&p,g,0x1006,0,30,0x430040,2,8,&w,wr));assert(p.failed);p.failed=false;assert(!memcmp(&p,&saved,sizeof p));assert(g[0]==0);p=saved;unsigned writes=w.writes;assert(!pt0_io(&p,g,0x1006,0,30,0x430041,2,8,&w,wr));assert(w.writes==writes&&!memcmp(&p,&saved,sizeof p));assert(!pt0_tick(&p,6)&&!memcmp(&p,&saved,sizeof p));puts("PIT0/PIC clock transaction host PASS; not dispatcher");}

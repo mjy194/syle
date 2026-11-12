@@ -9,8 +9,11 @@
 #include "linux_profile_activation.h"
 #include "linux_nonpresent_pf.h"
 #include "linux_pit2.h"
+#include "legacy_irq_runtime.h"
+#include "pic0_ports.h"
 struct lgs_session;struct lgm_service_ops;struct lgs_entry_result;
 struct lgd_config {
+ bool legacy_pic_enabled; /* Opt-in, exclusive with APIC/lia. */
  struct lvp_cpu_features cpu;
  struct lad_config apic; /* Optional entire guest_apic domain; never mix lia. */
  struct lia *irq_adapter;
@@ -29,6 +32,7 @@ struct lgd_config {
 #include "linux_pic_mask.h"
 #include "linux_rtc.h"
 struct lgd_context {
+ struct lir legacy;struct pcp ports;uint64_t generation;bool legacy_initialized;
  struct ldd_state debug_disabled;
  struct lpic_state pic;
  struct lrtc_state rtc;

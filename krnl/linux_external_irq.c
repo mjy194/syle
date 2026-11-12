@@ -1,7 +1,7 @@
 #include "linux_external_irq.h"
 void lei_init(struct lei_irq *s) { if(s) *s=(struct lei_irq){0}; }
 enum lei_gate lei_check(const struct lei_irq *s,unsigned v,const struct lei_snapshot *g) {
- if(!s||!g||s->phase!=LEI_IDLE||v<32||v>255||g->activity||g->entry_info||g->vectoring||g->pf_pending||g->high_pending||(g->blocking&~3u)) return LEI_REJECT;
+ if(!s||!g||s->phase!=LEI_IDLE||v<32||v>255||g->activity>1||g->entry_info||g->vectoring||g->pf_pending||g->high_pending||(g->blocking>2)||(g->activity==1&&g->blocking)) return LEI_REJECT;
  return (!(g->rflags&(1ull<<9))||(g->blocking&3))?LEI_DEFER_WINDOW:LEI_READY;
 }
 bool lei_stage(struct lei_irq *s,unsigned v,uint64_t token,const struct lei_snapshot *g,void *c,lei_write w) {

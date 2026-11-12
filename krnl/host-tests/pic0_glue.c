@@ -12,8 +12,10 @@ int main(void){setup();mock.reenter=true;assert(pgg_before(&glue,&snapshot,&mock
  for(unsigned f=4;f<=6;f++){setup();mock.fail=f;assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_READY);assert(!pgg_after(&glue,PGG_NO_ENTRY,0,0,&mock,wr)&&pic.reserved&&pic.irr&&glue.failed);}
  setup();snapshot.pf_pending=true;assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_READY&&!pic.reserved&&!mock.calls);
  setup();snapshot.rflags=0;assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_DEFER_WINDOW&&!pic.reserved&&!mock.calls);
- setup();snapshot.activity=1;assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_ERROR&&glue.failed);
+ setup();snapshot.activity=1;assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_READY&&pic.reserved);assert(pgg_after(&glue,PGG_NO_ENTRY,0,0,&mock,wr)&&pic.irr);
+ setup();snapshot.activity=1;snapshot.blocking=1;assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_ERROR&&glue.failed);
+ setup();snapshot.activity=2;assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_ERROR&&glue.failed);
  const unsigned bad[]={0,7,52,0x80000021};for(unsigned i=0;i<4;i++){setup();assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_READY);if(bad[i]==0x80000021){assert(pgg_after(&glue,PGG_EXIT,bad[i],0,&mock,wr)&&!pic.reserved&&pic.irr);}else assert(!pgg_after(&glue,PGG_EXIT,bad[i],0,&mock,wr)&&pic.reserved&&glue.failed);}
  setup();assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_READY);assert(!pgg_after(&glue,PGG_UNKNOWN,0,0,&mock,wr)&&pic.reserved);
  setup();assert(pgg_before(&glue,&snapshot,&mock,wr)==PGG_READY);assert(!pgg_after(&glue,PGG_EXIT,10,0x80000030,&mock,wr)&&pic.reserved);
- puts("PIC0+LEI host glue: reservation/receipt/clear/account, noentry, postreserve edges, PF/defer, writefail and quarantine PASS; no HLT/runtime wiring");return 0;}
+ puts("PIC0+LEI host glue: reservation/receipt/clear/account, noentry, postreserve edges, PF/defer, writefail and quarantine PASS; halted gate only; no VM acceptance");return 0;}
