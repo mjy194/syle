@@ -7,7 +7,7 @@ int main(void){setup(false);session.native.gpr[0]=255;assert(io(0xa1,false,true)
  const unsigned ports[]={0x21,0xa1};for(unsigned p=0;p<2;p++)for(unsigned v=0;v<256;v++){setup(false);session.native.gpr[0]=v;bool safe=v==255||(!p&&v==251);assert(io(ports[p],false,true)==safe);if(!safe)assert(dispatch.failed&&dispatch.pic.master==255&&dispatch.pic.slave==255);}
  setup(false);session.native.gpr[0]=251;mock.failwrite=4;assert(!io(0x21,false,true)&&dispatch.pic.master==255&&dispatch.failed);unsigned n=mock.writes;assert(!io(0x21,false,true)&&mock.writes==n);
  setup(false);session.native.gpr[0]=0x123456789;mock.failwrite=4;assert(!io(0x21,true,true)&&session.native.gpr[0]==0x123456789);
- setup(false);session.native.gpr[0]=0x11;assert(!io(0x20,false,true));setup(false);assert(!io(0xa0,true,true));
+ setup(false);session.native.gpr[0]=0x12;assert(!io(0x20,false,true));setup(false);assert(!io(0xa0,true,true));
  const uint64_t bad[]={0x210041,0x210050,0x210060,0x100210040};for(unsigned i=0;i<4;i++){setup(false);mock.f[0x6400]=bad[i];assert(!run(30));}
  setup(false);mock.f[0x6400]=0x210000;mock.f[0x440c]=1;session.native.gpr[3]=0x22;assert(!run(30));
  setup(false);session.native.gpr[0]=251;assert(io(0x21,false,true));session.prepared=false;assert(lgd_reset(&dispatch)&&dispatch.pic.master==255&&dispatch.pic.slave==255);

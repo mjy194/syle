@@ -123,7 +123,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  case 31:case 32:ok=msr(d,s,reason,rip,(unsigned)len);break;
  case 30:
   if((q>>16)==0x20||(q>>16)==0x21||(q>>16)==0xa0||(q>>16)==0xa1){
-   ok=lpic_io(&d->pic,s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite);break;
+   uint64_t flags;ok=rd(s,0x6820,&flags)&&lpic_io_flags(&d->pic,s->native.gpr,rip,0,reason,q,(unsigned)len,flags,s->hop.context,s->hop.vmwrite);break;
   }
   if((q>>16)==0x61||(q>>16)==0x42||(q>>16)==0x43){
    ok=lpit2_io(&d->pit,s->native.gpr,rip,0,reason,q,(unsigned)len,d->staged_tick,s->hop.context,s->hop.vmwrite)==LPIT_COMMITTED;break;
@@ -178,6 +178,8 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
  if(!s||!s->prepared||s->failed||!s->state.ready||s->state.host_dirty||!s->state.guest_valid||
     (d->session&&d->session!=s)||d->exits>=d->config.max_exits)goto done;
  d->session=s;
+ uint64_t pic_flags;
+ if(!s->platform.read_field||!rd(s,0x6820,&pic_flags)||!lpic_entry_ok(&d->pic,pic_flags))goto done;
  if(d->config.apic.transactions&&!lpa_before(&d->activation,&d->config.apic,s,&d->config.cpu))goto done;
  if(d->config.irq_delivery_enabled){
   struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending,.high_pending=d->high==LHP_PENDING};
