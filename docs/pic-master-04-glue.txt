@@ -1,0 +1,26 @@
+PIC04 receipt bridge B, host-only. New independent module, no dispatcher changes.
+Depends on pic_master_04 model A and existing linux_external_irq engine from
+7093113 full source. test.sh uses real dependencies and includes full commands.
+
+Master object explicit per call; gate owns domain and exact source ticket.
+No stored master pointer. Caller serializes full domain and must authenticate
+ALL PF/GP/BP metadata/owners before calling; snapshot booleans are not proof.
+before rejects vectoring or ownerless nonzero event even with no PIC pending.
+Full entry-error/len ownership remains caller responsibility.
+Authenticated pending exception skips IRQ. IF/blocking defer asks outer window
+controller; this bridge does not write interrupt-window controls.
+Reserve -> valid-last LEI stage. Failed stage keeps token and latches failed,
+no further entry/callback retry. Verified NO_ENTRY clears metadata then cancels
+without consuming IRR. Instruction receipts use unchanged LEI whitelist.
+Timer/window/unknown/vectoring quarantine both engine and PIC reservation.
+Delivered clears metadata before PIC acceptance; later source edges preserved.
+Any partial clear/account failure latches no-resume and retains reservation.
+No automatic retry/replay/reset; owner destroys whole domain safely.
+An idle after hook may report unknown with no token: no delivery is inferred;
+session remains responsible for rejecting malformed/unknown native outcomes.
+Real entry budget, caps, host safety and snapshot reads belong to outer session.
+No guest IRQ4 acceptance, real input success or VM test claimed.
+
+ASan/UBSan and freestanding -Werror PASS: IRQ4 then nested IRQ0, noentry cancel,
+all 3 stage/3 clear write failures, pending source edge, PF exclusion,
+IF defer, unknown/timer/window/vectoring quarantine.
