@@ -56,11 +56,22 @@ static bool dispatch(void*x,struct lgs_session*s,uint32_t reason) {
 static bool prepare_guest(void*x,struct lgs_session*s){
  (void)x;return platform.service.prepare_guest(platform.service.ctx,s);
 }
+#ifdef MG_PROGRESS_DIAG
+extern void linux_guest_progress_note(struct lgs_session*);
+#endif
 static bool before_entry(void*x,struct lgs_session*s) {
- (void)x;return platform.service.before_entry(platform.service.ctx,s);
+ (void)x;bool ok=platform.service.before_entry(platform.service.ctx,s);
+ #ifdef MG_PROGRESS_DIAG
+ if(ok)linux_guest_progress_note(s);
+ #endif
+ return ok;
 }
 static bool after_entry(void*x,struct lgs_session*s,const struct lgs_entry_result*r) {
- (void)x;return platform.service.after_entry(platform.service.ctx,s,r);
+ (void)x;bool ok=platform.service.after_entry(platform.service.ctx,s,r);
+ #ifdef MG_PROGRESS_DIAG
+ if(ok)linux_guest_progress_note(s);
+ #endif
+ return ok;
 }
 /* int80 uses the Ring3-owned root and a null SS. Temporarily enter the
  * already established supervisor root; never weaken paging WB proof. */
@@ -107,9 +118,18 @@ static void pf_diagnostic(struct lgs_session*g){
  log_text("PF.data_valid=");log_hex(d.data_valid);log_text(" gate=");log_hex(d.gate[0]);log_hex(d.gate[1]);log_text(" csdesc=");log_hex(d.csdesc);log_text("\n");
  log_text("PF.instruction=");log_hex(d.bytes[0]);log_hex(d.bytes[1]);log_text(" handler=");log_hex(d.handler_bytes[0]);log_hex(d.handler_bytes[1]);log_text("\n");
 }
+#ifdef MG_PROGRESS_DIAG
+extern void linux_guest_progress_probe(struct lgs_session*,bool,bool);
+#endif
 static int start(void*c){
  struct mhc_saved saved=enter_context();struct lgs_session*g=c;
+ #ifdef MG_PROGRESS_DIAG
+ linux_guest_progress_probe(g,false,false);
+ #endif
  int r=lgs_guest_backend.start(c);
+ #ifdef MG_PROGRESS_DIAG
+ linux_guest_progress_probe(g,true,r==0);
+ #endif
  if(r){
   log_text("MANAGED.SLICE failed stage=");log_hex(g->step_stage);
   log_text(" state_result=");log_hex(g->step_result);

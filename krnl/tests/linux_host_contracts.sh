@@ -89,3 +89,5 @@ sh krnl/tests/linux_misc_features_dispatch.sh
 sh krnl/tests/linux_msr_gp_dispatch.sh
 
 sh krnl/tests/linux_int3_dispatch.sh
+
+sh krnl/tests/linux_progress_diag.sh

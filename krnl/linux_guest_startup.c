@@ -41,3 +41,34 @@ bool linux_guest_startup_install(void) {
  return lgd_init(&dispatcher,&c,&service)&&linux_guest_manager_install(&service);
 #endif
 }
+
+#ifdef MG_PROGRESS_DIAG
+#if !defined(MG_LEGACY_PIC) || defined(MG_EXPERIMENTAL_APIC)
+#error "Progress diagnostic is limited to opt-in legacy PIC target"
+#endif
+#include "linux_progress_diag.h"
+#include "../efi/src/exceptions.h"
+static struct lprog_gate progress_gate;
+static unsigned progress_pending;
+void linux_guest_progress_note(struct lgs_session*s){
+ if(!s||s->state.host_dirty||!s->state.ready||!s->platform.safe||!s->platform.safe(s->platform.ctx))return;
+ if(dispatcher.legacy_initialized&&dispatcher.legacy.timer.pic.reserved)progress_pending|=2;
+ if(dispatcher.legacy_initialized&&dispatcher.legacy.timer.pic.completed)progress_pending|=4;
+}
+void linux_guest_progress_probe(struct lgs_session*s,bool after,bool success){
+ struct lprog_snapshot v;
+ if(!s)return;
+ unsigned milestones=progress_pending;
+ if(after&&success&&s->last_reason==12)milestones|=1;
+ if(dispatcher.legacy_initialized&&dispatcher.legacy.timer.pic.reserved)milestones|=2;
+ if(dispatcher.legacy_initialized&&dispatcher.legacy.timer.pic.completed)milestones|=4;
+ bool due=lprog_due(&progress_gate,s->exits,after,success);
+ bool marked=lprog_mark(&progress_gate,milestones);
+ if((!due&&!marked)||!lprog_collect(&dispatcher,s,&v))return;
+ log_text(after?"MANAGED.PROGRESS after":"MANAGED.PROGRESS before");
+ #define P(label,field) do{log_text(label);log_hex(v.field);}while(0)
+ P(" exits=",exits);P(" ticks=",ticks);P(" reload=",reload);P(" count=",count);P(" edges=",edges);P(" irr=",irr);P(" isr=",isr);P(" token=",reserved);P(" lei=",phase);P(" raw_reason=",reason);P(" raw_rip=",rip);P(" stage=",stage);P(" result=",result);
+ log_text(" milestones=");log_hex(milestones);log_text(" timer_valid=");log_hex(v.timer_valid);log_text(" vmcs_valid=");log_hex(v.vmcs_valid);log_text("\n");
+ #undef P
+}
+#endif
