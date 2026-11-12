@@ -54,6 +54,9 @@ sh krnl/tests/linux_nonpresent_pf.sh
 sh krnl/tests/linux_nonpresent_dispatch.sh
 sh krnl/tests/linux_pit2.sh
 sh krnl/tests/pit0.sh
+sh krnl/tests/pic0.sh
+sh krnl/tests/pic0_glue.sh
+sh krnl/tests/guest_wait.sh
 sh krnl/tests/linux_clock_dispatch.sh
 sh krnl/tests/linux_disabled_apic.sh
 sh krnl/tests/linux_disabled_apic_dispatch.sh
