@@ -31,7 +31,9 @@ struct lgd_config {
 #include "linux_debug_disabled.h"
 #include "linux_pic_mask.h"
 #include "linux_rtc.h"
+#include "linux_port80.h"
 struct lgd_context {
+ struct lp80_state post;
  struct lir legacy;struct pcp ports;uint64_t generation;bool legacy_initialized;
  struct ldd_state debug_disabled;
  struct lpic_state pic;

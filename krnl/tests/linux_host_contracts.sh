@@ -78,3 +78,6 @@ sh krnl/tests/pic0_ports.sh
 sh krnl/tests/pit0_transaction.sh
 sh krnl/tests/legacy_irq_runtime.sh
 sh krnl/tests/linux_legacy_dispatch.sh
+
+sh krnl/tests/linux_port80.sh
+sh krnl/tests/linux_port80_dispatch.sh
