@@ -1,0 +1,29 @@
+Optional preparation wrapper, not wired to session or manager in this increment.
+Order: allocate zero stable lpp_context and unique nonzero domain; lpp_init builds
+fresh APIC/IOAPIC/gia/lams/lio with explicit synthetic time. Use its config and
+&context.irq/gia_irq4 for dispatcher registration. Stable address is mandatory.
+The models initialize here because dispatcher registration precedes CREATE and
+requires structurally valid pointers. The prepare hook does NOT reset models,
+reinitialize a token or erase earlier activity.
+
+Control owner adds optional bool prepare_guest(void*,struct lgs_session*) after
+lgm_prepare success, before platform.enable/host VMX setup. Delegate to
+lpp_prepare_guest with this stable context (platform can multiplex its own ctx).
+At this point session.prepared is false, memory.prepared true. No VMCS assumed.
+Hook copies only via memory.pages and trusted owner.map; full bounds checked.
+Each written page calls owner.writeback. Failure may already have changed RAM,
+so lar_install DIRTY and sticky failure are retained. No allocate/release/VMX.
+The first attempted eligible session/owner/EPTP association remains recorded even
+on partial failure. Existing session dispose owns all cleanup. False never means
+that written bytes were rolled back. Publication of RSDP remains last.
+
+First before_entry still independently verifies actual firmware/control/EPT and
+fresh device evidence before activating experimental CPUID. Hook success alone
+is not activation. User input stays busy until experimental activation.
+Clock is synthetic, not calibrated. No Linux runtime acceptance follows.
+
+One context/domain per CREATE. No reset API: after complete guest and device
+teardown construct a new zero object with a never-reused domain ID. A manager
+reset callback alone must not zero a live lpp_context. Ordinary STOP/START does
+not call this one-attempt prepare hook again. All operations single-BSP,
+serialized; immutable owner callbacks/config through installation and entry.

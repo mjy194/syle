@@ -44,6 +44,11 @@ sh krnl/tests/linux_cpu_profile.sh
 run acpi-reduced krnl/tests/linux_acpi_reduced.c krnl/linux_acpi_reduced.c krnl/linux_acpi_topology.c
 run acpi-reduced-install krnl/tests/linux_acpi_reduced_install.c krnl/linux_acpi_reduced_install.c krnl/linux_acpi_reduced.c krnl/linux_acpi_topology.c
 sh krnl/tests/linux_profile_gate.sh
+sh krnl/tests/linux_profile_activation.sh
+sh krnl/tests/linux_profile_prepare.sh
+sh krnl/tests/linux_profile_lifecycle.sh
+sh krnl/tests/linux_nonpresent_pf.sh
+sh krnl/tests/linux_nonpresent_dispatch.sh
 # Native harness uses CPL3 refusal/fixup and user FX state only. Do not apply
 # sanitizer instrumentation across the intentional FX-state exchange.
 "$CC" -std=c11 -Ikrnl -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -fno-pie -no-pie krnl/host-tests/linux_vcpu_native.c krnl/host-tests/linux_vcpu_native_fx.S krnl/linux_vcpu_native.c krnl/linux_vcpu_native.S krnl/linux_vcpu_state.c -o "$tmp/native"

@@ -1,0 +1,28 @@
+Profile activation candidate, host-only; default boot path is not enabled.
+
+Explicit configured APIC intent passes lgd_init structurally but remains BASELINE.
+Experimental preactivation SEND/RECV return busy, preventing silent queue acceptance
+that would mutate fresh device state. Default UART polling behaviour is unchanged.
+First before_entry invokes lpg_prepare against actual VMCS, owned EPT, RAM firmware
+and fresh domain. Only successful verification commits the selected profile.
+Any failure is sticky in dispatcher and activation; no fallback after preparation.
+CPUID exits, MSR capability checks and EPT/MMIO checks use the same selected kind.
+BIOS signature refresh commits only after CPUID.01H RIP write succeeds.
+
+Every subsequent before_entry checks strict actual VMX interception controls,
+owned EPT contents/EPTP, timer reload, owner callbacks, session/domain/model/clock
+identities and monotonic synthetic time. Legitimate pending events are handled by
+existing PF/IRQ arbitration, not incorrectly required to be zero. Firmware and
+initial RIP/RSP/RSI are checked once, before guest ownership of bootparams.
+Memory allocator ownership and serialized immutable configuration are trusted
+contracts; no concurrent mutation between checks and entry is permitted.
+
+Control owner needs optional prepare_guest(ctx,session) after lgm_prepare and
+before platform.enable: install lar firmware into owned RAM and initialize a fresh
+APIC/IOAPIC domain there, no VMX. Failure retains memory for existing dispose.
+This optional hook is NOT implemented in this patch; control owns session headers.
+Real gate remains in before_entry where current VMCS exists. Runtime installation,
+CPU/timer/Linux recognition, external IRQ timing and shell remain unverified.
+Destroy must fully release guest resources and reconcile/destroy entire device
+ownership domain before reinitialization with new unique domain ID and reset.
+No APIC enable, firmware installation or VM is performed by these host tests.

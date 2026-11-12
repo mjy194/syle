@@ -12,13 +12,17 @@ static bool rd(struct lgs_session*s,uint32_t f,uint64_t*v){return s->platform.re
 static bool wr(struct lgs_session*s,uint32_t f,uint64_t v){return s->hop.vmwrite(s->hop.context,f,v);}
 static bool clear_event(struct lgs_session*s){return wr(s,0x4016,0)&&wr(s,0x4018,0)&&wr(s,0x401a,0);}
 static bool consume(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_t rip,uint64_t vector,uint64_t event){
- enum lhp_state high=d->high;struct lpfg_state next;
+ enum lhp_state high=d->high;struct lpfg_state next;struct lnp_state demand=d->demand_pf;
+ if(demand.pending){
+  if(d->pf.pending||high==LHP_PENDING||!lnp_observe(&demand,reason,vector,event,&demand))return false;
+  event=0;
+ }
  if(high==LHP_PENDING){
   if(d->pf.pending||!lhp_consume(high,reason,vector,event,&high))return false;
   event=0;
  }
  if(!lpfg_observe(&d->pf,reason,rip,vector,event,&next)||!clear_event(s))return false;
- d->high=high;d->pf=next;return true;
+ d->high=high;d->pf=next;d->demand_pf=demand;return true;
 }
 static bool cr(struct lgs_session*s,uint64_t rip,uint64_t q,unsigned len){
  struct lvc_state v={.rip=rip};struct lvc_change c;
@@ -38,6 +42,7 @@ static bool cr(struct lgs_session*s,uint64_t rip,uint64_t q,unsigned len){
 }
 static bool pf(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_t rip,uint64_t q){
  if(!d->config.fixed_input_verified)return false;
+ if(d->pf.closed&&d->high==LHP_CONSUMED)return lnp_inject(&d->demand_pf,s);
  if(d->pf.closed){
   struct lhp_snapshot snap;
   return lgds_high(s,reason,rip,q,0,0,&snap)&&lhp_accept(d->high,&d->pf,&snap)&&
@@ -56,7 +61,7 @@ static bool msr(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64
  if(id==0x8b)return lmc_msr(&d->microcode,s->native.gpr,rip,0,reason,len,s->hop.context,s->hop.vmwrite);
  if(id==0xc0000101u)return rd(s,0x6810,&base)&&lgsc_apply(s->native.gpr,rip,base,0,reason,len,s->hop.context,s->hop.vmwrite);
  struct lvp_cpuid_result basic,ext;
- if(!lvp_cpuid(&d->config.cpu,1,0,&basic)||!lvp_cpuid(&d->config.cpu,0x80000001,0,&ext))return false;
+ if(!lcp_query(d->activation.kind,&d->config.cpu,1,0,&basic)||!lcp_query(d->activation.kind,&d->config.cpu,0x80000001,0,&ext))return false;
  if(d->config.apic.transactions&&(id==0x1b||(id>=0x800&&id<=0x8ff)))
   return lad_msr(&d->config.apic,s,basic.c,basic.d)>=LAMS_COMMITTED;
  if(id==0xc0000080u){
@@ -74,6 +79,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  if(!s||!s->prepared||s->failed||!s->state.ready||!s->state.guest_valid||s->state.host_dirty||
     !s->platform.read_field||!s->hop.vmwrite||!s->hop.invept||(d->session&&d->session!=s)||
     d->exits>=d->config.max_exits)goto done;
+ if(d->config.apic.transactions&&(!d->activation.active||d->activation.failed||d->activation.session!=s))goto done;
  d->session=s;d->exits++;
  /* The final allowed observed exit is terminal: no event preparation,
   * emulation or true return that could authorize entry N+1. */
@@ -90,19 +96,22 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  if(reason==0){ok=pf(d,s,reason,rip,q);goto done;}
  if(reason==48&&d->config.apic.transactions){
   struct lvp_cpuid_result cp;
-  ok=lvp_cpuid(&d->config.cpu,1,0,&cp)&&lad_mmio(&d->config.apic,s,cp.d)>=LAMS_COMMITTED;
+  ok=lcp_query(d->activation.kind,&d->config.cpu,1,0,&cp)&&lad_mmio(&d->config.apic,s,cp.d)>=LAMS_COMMITTED;
   goto done;
  }
  if(len>15)goto done;
  switch(reason){
  case 28:ok=cr(s,rip,q,(unsigned)len);break;
- case 10:ok=lmc_cpuid(&d->microcode,s->native.gpr,rip,0,reason,(unsigned)len,&d->config.cpu,s->hop.context,s->hop.vmwrite);break;
+ case 10:{uint32_t leaf=(uint32_t)s->native.gpr[0];
+  ok=lcp_apply(d->activation.kind,&d->config.cpu,s->native.gpr,rip,0,reason,(unsigned)len,s->hop.context,s->hop.vmwrite);
+  if(ok&&leaf==1)d->microcode.loaded=true;
+  break;}
  case 31:case 32:ok=msr(d,s,reason,rip,(unsigned)len);break;
  case 30:ok=lurt_guest_io(&d->uart,s->native.gpr,rip,0,reason,q,(unsigned)len,s->hop.context,s->hop.vmwrite)>=0;break;
  default:break;
  }
 done:
- if(!ok)d->failed=true;
+ if(!ok){d->failed=true;d->activation.failed=true;}
  d->busy=false;return ok;
 }
 bool lgd_reset(void*p){
@@ -111,16 +120,16 @@ bool lgd_reset(void*p){
  if(d->config.irq_adapter&&(d->config.irq_adapter->reserved||d->config.irq_adapter->quarantined))return false;
  struct linux_uart_runtime uart;
  if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
- d->uart=uart;d->pf=(struct lpfg_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
- d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
+ d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
+ d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){
- struct lgd_context*d=p;if(!d||!d->ready||d->failed||d->busy||d->entry_inflight)return -16;
+ struct lgd_context*d=p;if(!d||!d->ready||d->failed||d->busy||d->entry_inflight||(d->config.apic.transactions&&!d->activation.active))return -16;
  d->busy=true;bool accepted=false;enum lurt_result r=lurt_receive(&d->uart,byte,&accepted);d->busy=false;
  return r>=0&&accepted?0:-16;
 }
 int lgd_recv(void*p){
- struct lgd_context*d=p;if(!d||!d->ready||d->failed||d->busy||d->entry_inflight)return -16;
+ struct lgd_context*d=p;if(!d||!d->ready||d->failed||d->busy||d->entry_inflight||(d->config.apic.transactions&&!d->activation.active))return -16;
  d->busy=true;bool available=false;uint8_t byte=0;enum lurt_result r=lurt_pop_tx(&d->uart,&available,&byte);d->busy=false;
  return r>=0&&available?byte:-16;
 }
@@ -132,7 +141,7 @@ bool lgd_init(struct lgd_context*d,const struct lgd_config*c,struct lgm_service_
  if(guest_apic&&(!lad_valid(&c->apic)||c->irq_adapter||!c->irq_delivery_enabled||!c->irq_platform_ready||
     c->sync_irq!=gia_irq4||c->irq_ctx!=c->apic.irq))return false;
  if(!guest_apic&&(c->apic.irq||c->apic.now))return false;
- if(c->irq_delivery_enabled&&((!guest_apic&&(!c->irq_adapter||!c->irq_adapter->enabled))||!c->irq_platform_ready||
+ if(c->irq_delivery_enabled&&!guest_apic&&((!c->irq_adapter||!c->irq_adapter->enabled)||!c->irq_platform_ready||
     !lvp_cpuid(&c->cpu,1,0,&cp)||!(cp.d&(1u<<9))||!(cp.c&(1u<<21))))return false;
  *d=(struct lgd_context){.config=*c,.configured=true};
  if(!lgd_reset(d))return false;
@@ -146,8 +155,9 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
  if(!s||!s->prepared||s->failed||!s->state.ready||s->state.host_dirty||!s->state.guest_valid||
     (d->session&&d->session!=s)||d->exits>=d->config.max_exits)goto done;
  d->session=s;
+ if(d->config.apic.transactions&&!lpa_before(&d->activation,&d->config.apic,s,&d->config.cpu))goto done;
  if(d->config.irq_delivery_enabled){
-  struct lei_snapshot g={.pf_pending=d->pf.pending,.high_pending=d->high==LHP_PENDING};
+  struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending,.high_pending=d->high==LHP_PENDING};
   uint64_t b,a,e,v,err,len;
   if(!s->platform.read_field||!s->hop.vmwrite||
      !rd(s,0x6820,&g.rflags)||!rd(s,0x4824,&b)||b>UINT32_MAX||
@@ -163,7 +173,7 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
   }else if(!lig_before(&d->irq,d->config.irq_adapter,&g,s->hop.context,s->hop.vmwrite))goto done;
  }
  d->entry_inflight=true;ok=true;
-done:if(!ok)d->failed=true;d->busy=false;return ok;
+done:if(!ok){d->failed=true;d->activation.failed=true;}d->busy=false;return ok;
 }
 bool lgd_after_entry(void*p,struct lgs_session*s,const struct lgs_entry_result*r){
  struct lgd_context*d=p;
@@ -186,5 +196,5 @@ bool lgd_after_entry(void*p,struct lgs_session*s,const struct lgs_entry_result*r
  }
  if(outcome==LIG_UNKNOWN)goto done;
  ok=true;
-done:if(!ok)d->failed=true;d->busy=false;return ok;
+done:if(!ok){d->failed=true;d->activation.failed=true;}d->busy=false;return ok;
 }

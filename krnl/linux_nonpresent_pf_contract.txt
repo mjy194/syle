@@ -1,0 +1,40 @@
+Restricted generic nonpresent supervisor data page-fault reinjection, host-only.
+No RIP/address whitelist in the new validator. Dispatcher only enables it after
+legacy compressed PF and pinned high-PF phases have completed; old contracts
+remain unchanged. Requires trusted fixed image policy for that phase sequence.
+
+Accept exact VM-exit reason0 / info80000b0e / error0 or2 (read/write, supervisor,
+P=0). Reject user, protection, reserved-bit, fetch, PK, shadow-stack and other
+error encodings, blocking/activity, vectoring or an occupied entry slot.
+Use strict existing four-level long-mode CPU profile, 48bit canonical addresses,
+32-bit guest physical addressing. Table nodes always owned RAM; each present
+ancestor valid, accessed, correct write permission for write fault; only actual
+P=0 terminates absence proof. Software bits in absent entries are ignored as the
+architecture requires. Present leaves/huge mappings do not prove nonpresence.
+No guest page-table edits, allocation or host-address passthrough.
+
+Independently verify mapped executable current RIP, mapped IDT14 and current-CS
+GDT descriptor, present CPL0 long code, same-CS type8e IST0 gate, executable
+handler entry16 bytes. Stack uses aligned-down 64bit RSP minus six qwords (48B),
+checks entire span writable/dirty through page permissions, including cross-page.
+Mapped dependencies must stay in owned RAM. This proves safe architectural
+entry prerequisites, not correctness or complete mapping of the entire handler.
+Unsupported mode/IST/new handler dependency faults fail closed.
+
+Error and CR2 are original guest values. VM-entry error/length0/info-last commit;
+partial write makes state sticky failed and dispatcher forbids resume. No RIP
+advance. Pending enters IRQ arbitration as PF ownership. Receipt requires actual
+successful session exit, no vectoring, supported instruction reason10/28/30/31/
+32/48 and exact compatible retained event encoding. Timer52, external1, another
+exception0, unknown, entryfail or vectoring do not establish delivery and stop
+without clearing pending. Conservative receipt restrictions may stop real Linux
+before all demand faults; never bypass by treating valid-bit clearing as proof.
+
+At most32 injections per CREATE, regardless of CR3 changes. Tuple history uses
+RIP/fault/CR3/error; repeated tuple rejected even if guest later changed mappings.
+Existing whole-session exit budget remains independent. Reset only after destroy.
+
+Integration: add linux_nonpresent_pf to managed MG_MODS (opt-in MP_MODS inherits
+MG_MODS). New dispatcher references require linking the module in every target
+that includes linux_guest_dispatch; standalone tests were updated accordingly.
+No native/session changes in this increment. No VM runs or Linux acceptance.

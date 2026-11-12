@@ -44,20 +44,27 @@ static bool devices(const struct lad_config*c){
  for(unsigned i=0;i<IOAPIC_PINS;i++)if(d->io->pins[i].low!=0x10000||d->io->pins[i].asserted||d->io->pins[i].remote_irr)return false;
  return true;
 }
+bool lpg_runtime(const struct lad_config*c,struct lgs_session*s){
+ if(!lad_valid(c)||!s||!s->prepared||s->failed||!s->enabled||!s->host.ready||!s->host.active||s->host.quarantined||
+ !s->state.ready||!s->state.guest_valid||s->state.host_dirty||!s->memory.prepared||!s->memory.owner.map||
+ s->memory.plan.ram_size!=LGM_RAM_SIZE||s->host.caps.timer_shift>20||
+ s->host.owner.context!=s->hop.context||s->host.owner.vmwrite!=s->hop.vmwrite)return false;
+ const uint32_t pri=(1u<<7)|(1u<<9)|(1u<<10)|(1u<<11)|(1u<<12)|(1u<<15)|(1u<<16)|(1u<<19)|(1u<<20)|(1u<<23)|(1u<<24)|(1u<<29)|(1u<<30)|(1u<<31);
+ const uint32_t en=(1u<<2)|(1u<<9)|(1u<<14)|(1u<<15),ex=(1u<<2)|(1u<<9)|(15u<<18);
+ if(!ctl(s,0x4000,0x49,0x5f)||!ctl(s,0x4002,pri,pri|0x0401e172u)||!eq(s,0x401e,0x42)||
+    !ctl(s,0x4012,en,en|0x11ffu)||!ctl(s,0x400c,ex,ex|0x36dffu)||!eq(s,0x4004,UINT32_MAX)||
+    !eq(s,0x4006,0)||!eq(s,0x4008,0)||!eq(s,0x400a,0)||!eq(s,0x6000,UINT64_MAX)||!eq(s,0x6002,UINT64_MAX)||!eq(s,0x400e,0)||!eq(s,0x4010,0)||!eq(s,0x4014,0)||
+    !eq(s,0x482e,UINT64_C(1)<<(28-s->host.caps.timer_shift))||!ept(s))return false;
+ return true;
+}
 bool lpg_prepare(const struct lad_config*c,struct lgs_session*s,const struct lvp_cpu_features*h,struct lpg_choice*out){
  if(!out||!lad_valid(c)||!devices(c)||!lvp_cpu_supported(h)||!s||!s->prepared||s->failed||!s->enabled||
     !s->host.ready||!s->host.active||s->host.quarantined||!s->state.ready||!s->state.guest_valid||s->state.host_dirty||
     s->exits||s->native.resume||!s->memory.prepared||!s->memory.owner.map||s->memory.plan.ram_size!=LGM_RAM_SIZE||
     s->memory.plan.params_addr!=0x90000||s->host.caps.timer_shift>20||
     s->host.owner.context!=s->hop.context||s->host.owner.vmwrite!=s->hop.vmwrite)return false;
- const uint32_t pri=(1u<<7)|(1u<<9)|(1u<<10)|(1u<<11)|(1u<<12)|(1u<<15)|(1u<<16)|(1u<<19)|(1u<<20)|(1u<<23)|(1u<<24)|(1u<<29)|(1u<<30)|(1u<<31);
- const uint32_t en=(1u<<2)|(1u<<9)|(1u<<14)|(1u<<15),ex=(1u<<2)|(1u<<9)|(15u<<18);
- if(!ctl(s,0x4000,0x49,0x5f)||!ctl(s,0x4002,pri,pri|0x0401e172u)||!eq(s,0x401e,0x42)||
-    !ctl(s,0x4012,en,en|0x11ffu)||!ctl(s,0x400c,ex,ex|0x36dffu)||!eq(s,0x4004,UINT32_MAX)||
-    !eq(s,0x4006,0)||!eq(s,0x4008,0)||!eq(s,0x400a,0)||!eq(s,0x6000,UINT64_MAX)||!eq(s,0x6002,UINT64_MAX)||!eq(s,0x400e,0)||!eq(s,0x4010,0)||!eq(s,0x4014,0)||
-    !eq(s,0x4016,0)||!eq(s,0x4018,0)||!eq(s,0x401a,0)||
-    !eq(s,0x482e,UINT64_C(1)<<(28-s->host.caps.timer_shift))||
-    !eq(s,0x681e,s->memory.entry.rip)||!eq(s,0x681c,s->memory.entry.rsp)||s->native.gpr[4]!=0x90000||!ept(s))return false;
+ if(!lpg_runtime(c,s)||!eq(s,0x4016,0)||!eq(s,0x4018,0)||!eq(s,0x401a,0)||
+ !eq(s,0x681e,s->memory.entry.rip)||!eq(s,0x681c,s->memory.entry.rsp)||s->native.gpr[4]!=0x90000)return false;
  struct lai_ops ops={.context=s,.read=ram_read};
  if(!lar_verify_owned(&ops,LGM_RAM_SIZE,0x90000))return false;
  uint64_t time;if(!c->now(c->clock_ctx,&time)||time<c->irq->apic->timer.last_now)return false;

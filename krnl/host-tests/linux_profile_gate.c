@@ -1,4 +1,5 @@
 #include "../linux_profile_gate.h"
+#include "../linux_profile_activation.h"
 #include "../linux_acpi_reduced.h"
 #include "linux_guest_session.h"
 #include <assert.h>
@@ -11,6 +12,10 @@ static bool rd(void*c,uint32_t field,uint64_t*out){(void)c;if(readfail)return fa
 static bool wr(void*c,uint32_t field,uint64_t value){(void)c;(void)field;(void)value;assert(0);return false;}
 static bool now(void*c,uint64_t*out){(void)c;*out=current_time;return !clockfail;}
 static void*map(void*c,uint64_t p){(void)c;if(p>=0x100000&&p<0x100000+LGM_RAM_SIZE)return ram+p-0x100000;if(p>=0x20000000&&p<0x20000000+LGM_TABLE_COUNT*4096)return tables+p-0x20000000;return NULL;}
+static void* map_alt(void*c,uint64_t p){return map(c,p);}
+static bool rd_alt(void*c,uint32_t f,uint64_t*v){return rd(c,f,v);}
+static bool wr_alt(void*c,uint32_t f,uint64_t v){return wr(c,f,v);}
+static bool now_alt(void*c,uint64_t*v){return now(c,v);}
 static void put(uint8_t*p,uint64_t v,unsigned n){for(unsigned i=0;i<n;i++)p[i]=(uint8_t)(v>>(i*8));}
 static void setup(void){memset(&s,0,sizeof s);memset(&tx,0,sizeof tx);memset(&lio,0,sizeof lio);memset(f,0,sizeof f);memset(ram,0,LGM_RAM_SIZE);memset(tables,0,LGM_TABLE_COUNT*4096);readfail=clockfail=false;current_time=1;
  guest_apic_init_mode(&apic,1,false);ioapic_init_guest(&io,gia_enqueue,&gia);assert(gia_init(&gia,&apic,&io,123,true));assert(lams_init(&tx,&apic,123,&gia,gia_notify));assert(lio_init(&lio,&gia));cfg=(struct lad_config){.transactions=&tx,.irq=&gia,.now=now,.ioapic=&lio};
@@ -37,5 +42,40 @@ int main(void){ram=calloc(1,LGM_RAM_SIZE);tables=calloc(LGM_TABLE_COUNT,4096);as
  setup();s.exits=1;reject();setup();s.native.resume=1;reject();setup();s.state.host_dirty=true;reject();setup();s.host.quarantined=true;reject();setup();readfail=true;reject();setup();clockfail=true;reject();setup();current_time=0;reject();
  setup();s.host.caps.timer_shift=21;f[0x482e]=1u<<7;reject();
  setup();tx.domain++;reject();setup();gia.reserved=true;reject();setup();io.guest_profile=false;reject();setup();io.pins[4].low=0x8044;reject();setup();apic.x2apic=true;reject();setup();apic.timer.armed=true;reject();
- free(ram);free(tables);puts("linux_profile_gate: actual controls/EPT/owned firmware/fresh-domain failure matrix PASS (host only, no activation)");
+
+ setup();struct lpa_state activation={0};assert(lpa_before(&activation,&cfg,&s,&host)&&activation.active&&activation.kind==LCP_EXPERIMENTAL_APIC);
+ /* Mutable guest boot state/event ownership must not be rechecked as fresh. */
+ ram[LAT_GPA]^=1;ram[0x90070]=0;s.exits=1;s.native.resume=1;s.native.gpr[4]=0;
+ f[0x681e]=0xdead;f[0x681c]=0xbeef;f[0x4016]=0x80000b0e;f[0x4018]=2;current_time=2;
+ assert(lpa_before(&activation,&cfg,&s,&host)&&activation.last_time==2);
+ f[0x4002]|=1u<<28;assert(!lpa_before(&activation,&cfg,&s,&host)&&activation.failed);
+ f[0x4002]&=~(1u<<28);assert(!lpa_before(&activation,&cfg,&s,&host));
+ for(unsigned bad=0;bad<16;bad++){
+ setup();activation=(struct lpa_state){0};assert(lpa_before(&activation,&cfg,&s,&host));
+ if(bad==0)gia.domain++;
+ if(bad==1)s.memory.owner.context=&activation;
+ if(bad==2)s.hop.context=&activation;
+ if(bad==3)cfg.clock_ctx=&activation;
+ if(bad==4)current_time=0;
+ if(bad==5)tables[3*4096]^=4;
+ if(bad==6)s.platform.ctx=&activation;
+ if(bad==7)s.memory.owner.map=map_alt;
+ if(bad==8)s.platform.read_field=rd_alt;
+ if(bad==9)s.hop.vmwrite=wr_alt;
+ if(bad==10)cfg.now=now_alt;
+ if(bad==11)s.memory.eptp^=0x1000;
+ if(bad==12)s.host.caps.physical_bits++;
+ if(bad==13)s.host.caps.timer_shift++;
+ struct lvp_cpu_features changed=host;if(bad==14)changed.basic_edx^=1;
+ struct guest_apic replacement=apic;if(bad==15)gia.apic=&replacement;
+ assert(!lpa_before(&activation,&cfg,&s,&changed)&&activation.failed);
+ setup();assert(!lpa_before(&activation,&cfg,&s,&host));
+ }
+ setup();activation=(struct lpa_state){0};assert(lpa_before(&activation,&cfg,&s,&host));
+ struct lgs_session *other=malloc(sizeof *other);assert(other);*other=s;
+ assert(!lpa_before(&activation,&cfg,other,&host)&&activation.failed);free(other);
+
+ setup();activation=(struct lpa_state){0};readfail=true;assert(!lpa_before(&activation,&cfg,&s,&host)&&!activation.active&&activation.kind==LCP_BASELINE&&activation.failed);
+ readfail=false;assert(!lpa_before(&activation,&cfg,&s,&host));
+ free(ram);free(tables);puts("linux_profile_gate: actual controls/EPT/owned firmware/fresh-domain failure matrix PASS (host only, no activation)");return 0;
 }

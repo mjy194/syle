@@ -54,20 +54,10 @@ int main(void){
  struct lgd_context fresh={0};struct lgm_service_ops out={0};assert(!lgd_init(&fresh,&enable,&out)&&!fresh.configured&&!out.ctx);
  setup(false);struct guest_apic ga;struct ioapic gio;struct gia gdomain;struct lams_state gtx={0};struct lio_state giox={0};
  guest_apic_init_mode(&ga,0,false);ioapic_init(&gio,gia_enqueue,&gdomain);assert(gia_init(&gdomain,&ga,&gio,99,true));assert(lams_init(&gtx,&ga,99,&gdomain,gia_notify));assert(lio_init(&giox,&gdomain));
- enable=dispatch.config;enable.apic=(struct lad_config){.transactions=&gtx,.irq=&gdomain,.now=clock_now,.ioapic=&giox};enable.irq_delivery_enabled=enable.irq_platform_ready=true;enable.irq_adapter=NULL;enable.sync_irq=gia_irq4;enable.irq_ctx=&gdomain;fresh=(struct lgd_context){0};out=(struct lgm_service_ops){0};assert(!lgd_init(&fresh,&enable,&out)&&!fresh.configured&&!out.ctx);
-
- /* Internal lifecycle fault fixture: production init above rejects this CPU
-  * profile. Exercise receipt ordering without claiming an enabled profile. */
- struct guest_apic_effect ge;ga.x2apic=true;assert(guest_apic_write(&ga,0x80f,0x1ff,0,&ge));
- uint32_t routevalue=0x18;assert(gia_ioapic_mmio(&gdomain,0,4,true,&routevalue)==DEVICE_HANDLED);routevalue=0x8044;assert(gia_ioapic_mmio(&gdomain,0x10,4,true,&routevalue)==DEVICE_HANDLED);
- assert(gia_irq4(&gdomain,4,true)&&guest_apic_accept(&ga,0x44));assert(guest_apic_write(&ga,0x80f,0xff,0,&ge));uint64_t eg[15]={0};eg[2]=0x80b;
- assert(lams_apply(&gtx,eg,0x10000,0,32,2,0,1u<<21,1u<<9,true,&mock,wr)==LAMS_EFFECT_PENDING);
- assert(guest_apic_write(&ga,0x80f,0x1ff,0,&ge));dispatch.config=enable;
- assert(lgd_before_entry(&dispatch,&session)&&!gtx.pending&&!gdomain.receipt_pending&&dispatch.entry_inflight);
- receipt=(struct lgs_entry_result){.state_result=LVS_EXIT,.fields_valid=true,.reason=52};assert(lgd_after_entry(&dispatch,&session,&receipt));
- assert(guest_apic_accept(&ga,0x44)&&guest_apic_write(&ga,0x80f,0xff,0,&ge));
- assert(lams_apply(&gtx,eg,0x10000,0,32,2,0,1u<<21,1u<<9,true,&mock,wr)==LAMS_EFFECT_PENDING);
- unsigned beforepending=mock.writes;assert(!lgd_before_entry(&dispatch,&session)&&dispatch.failed&&!dispatch.entry_inflight&&gtx.pending&&gdomain.receipt_pending&&mock.writes==beforepending);
+ enable=dispatch.config;enable.apic=(struct lad_config){.transactions=&gtx,.irq=&gdomain,.now=clock_now,.ioapic=&giox};enable.irq_delivery_enabled=enable.irq_platform_ready=true;enable.irq_adapter=NULL;enable.sync_irq=gia_irq4;enable.irq_ctx=&gdomain;fresh=(struct lgd_context){0};out=(struct lgm_service_ops){0};assert(lgd_init(&fresh,&enable,&out)&&fresh.configured&&!fresh.activation.active);
+ assert(lgd_send(&fresh,1)==-16&&lgd_recv(&fresh)==-16);
+ assert(!lgd_before_entry(&fresh,&session)&&fresh.failed&&fresh.activation.failed&&!fresh.activation.active);
+ assert(!lgd_before_entry(&fresh,&session));
  /* Quiescent session alone cannot discard a reserved/failed device domain. */
  dispatch.config.apic=enable.apic;gdomain.reserved=true;session.prepared=false;assert(!lgd_reset(&dispatch));
  setup(false);adapter.reserved=true;dispatch.config.irq_adapter=&adapter;assert(!lgd_reset(&dispatch));

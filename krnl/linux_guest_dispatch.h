@@ -6,6 +6,8 @@
 #include "linux_microcode_model.h"
 #include "linux_irq_glue.h"
 #include "linux_apic_dispatch.h"
+#include "linux_profile_activation.h"
+#include "linux_nonpresent_pf.h"
 struct lgs_session;struct lgm_service_ops;struct lgs_entry_result;
 struct lgd_config {
  struct lvp_cpu_features cpu;
@@ -24,7 +26,9 @@ struct lgd_config {
 };
 struct lgd_context {
  struct lgd_config config;
+ struct lpa_state activation;
  struct lpfg_state pf;
+ struct lnp_state demand_pf;
  struct lmc_state microcode;
  struct lig_state irq;
  bool entry_inflight;
@@ -45,13 +49,14 @@ bool lgd_after_entry(void*,struct lgs_session*,const struct lgs_entry_result*);
 bool lgd_dispatch(void*,struct lgs_session*,uint32_t);
 int lgd_send(void*,uint8_t);
 int lgd_recv(void*);
-/* External IRQ transaction hooks are opt-in; current CPUID hides APIC and
- * rejects enabling them. Thus Linux IRQ delivery is NOT available. sync_irq retains/publishes device
- * logical level only. A true sink return is level ownership, NOT guest delivery.
- * CPUID continues to hide APIC. UART polling is supported;
- * no claim that IRQ-driven Linux works. No implicit device clock advances. Reset cannot discard an IRQ token: after
- * full guest+LAPIC/IOAPIC domain destruction, caller must reinitialize the
- * adapter before CREATE; merely STOP is not sufficient.
+/* Default profile remains APIC-hidden. An explicitly configured entire APIC
+ * domain starts inactive: only the first before_entry evidence gate activates
+ * the experimental profile, and every entry revalidates controls/EPT/identity.
+ * SEND/RECV return busy until activation for this experimental domain only;
+ * default polling SEND semantics are unchanged. No claim of Linux acceptance.
+ * reset requires complete guest resource destruction and reconciled devices;
+ * owner must initialize a fresh domain (new nonzero generation ID) per CREATE.
+ * STOP/START cannot discard inflight IRQ ownership or sticky failure.
  * Session owns per-entry VMX timer. This layer adds a per-CREATE total-exit cap.
  * Unknown or failed transactions latch failure; never resume until DESTROY.
  */

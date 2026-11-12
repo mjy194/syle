@@ -10,4 +10,6 @@ struct lpg_choice {enum lcp_kind kind;uint64_t domain,initial_time;};
  * Output unchanged on failure; no silent fallback after partial preparation.
  * Does not select a live dispatcher profile or install firmware itself. */
 bool lpg_prepare(const struct lad_config*,struct lgs_session*,const struct lvp_cpu_features*,struct lpg_choice*);
+/* Per-entry controls/owned EPT check; no revalidation of mutable bootparams. */
+bool lpg_runtime(const struct lad_config*,struct lgs_session*);
 #endif
