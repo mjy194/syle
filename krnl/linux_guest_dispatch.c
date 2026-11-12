@@ -25,7 +25,11 @@ static bool sr(void*p,uint32_t f,uint64_t*v){return rd(p,f,v);}
 static bool sw(void*p,uint32_t f,uint64_t v){return wr(p,f,v);}
 static bool clear_event(struct lgs_session*s){return wr(s,0x4016,0)&&wr(s,0x4018,0)&&wr(s,0x401a,0);}
 static bool consume(struct lgd_context*d,struct lgs_session*s,uint64_t reason,uint64_t rip,uint64_t vector,uint64_t event){
- enum lhp_state high=d->high;struct lpfg_state next;struct lnp_state demand=d->demand_pf;struct lgp_state gp=d->msr_gp;
+ enum lhp_state high=d->high;struct lpfg_state next;struct lnp_state demand=d->demand_pf;struct lgp_state gp=d->msr_gp;struct lbp_state bp=d->bp;
+ if(bp.pending){
+  if(gp.pending||d->pf.pending||demand.pending||high==LHP_PENDING||!lbp_observe(&bp,reason,vector,event,&bp))return false;
+  event=0;
+ }
  if(gp.pending){
   if(d->pf.pending||demand.pending||high==LHP_PENDING||!lgp_observe(&gp,reason,vector,event,&gp))return false;
   event=0;
@@ -39,7 +43,7 @@ static bool consume(struct lgd_context*d,struct lgs_session*s,uint64_t reason,ui
   event=0;
  }
  if(!lpfg_observe(&d->pf,reason,rip,vector,event,&next)||!clear_event(s))return false;
- d->high=high;d->pf=next;d->demand_pf=demand;d->msr_gp=gp;return true;
+ d->high=high;d->pf=next;d->demand_pf=demand;d->msr_gp=gp;d->bp=bp;return true;
 }
 static bool cr(struct lgs_session*s,uint64_t rip,uint64_t q,unsigned len){
  struct lvc_state v={.rip=rip};struct lvc_change c;
@@ -121,7 +125,7 @@ bool lgd_dispatch(void*p,struct lgs_session*s,uint32_t supplied){
  if(d->uart.irq_dirty&&lurt_retry_irq(&d->uart)==LURT_REJECTED)goto done;
  /* Timer yield consumes pending events but never advances guest RIP. */
  if(reason==52){ok=true;goto done;}
- if(reason==0){ok=pf(d,s,reason,rip,q);goto done;}
+ if(reason==0){uint64_t info;if(!rd(s,0x4404,&info))goto done;ok=info==0x80000603?lbp_inject(&d->bp,s):pf(d,s,reason,rip,q);goto done;}
  if(reason==48&&d->config.apic.transactions){
   struct lvp_cpuid_result cp;
   ok=lcp_query(d->activation.kind,&d->config.cpu,1,0,&cp)&&lad_mmio(&d->config.apic,s,cp.d)>=LAMS_COMMITTED;
@@ -174,7 +178,7 @@ bool lgd_reset(void*p){
  struct linux_uart_runtime uart;
  if(!lurt_init(&uart,d->config.irq_ctx,d->config.sync_irq))return false;
  d->generation++;d->legacy_initialized=false;d->legacy=(struct lir){0};d->ports=(struct pcp){0};
- d->msr_gp=(struct lgp_state){0};d->post=(struct lp80_state){0};lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
+ d->bp=(struct lbp_state){0};d->msr_gp=(struct lgp_state){0};d->post=(struct lp80_state){0};lrtc_init(&d->rtc);lpic_init(&d->pic);d->debug_disabled=(struct ldd_state){0};d->ticks=d->staged_tick=0;d->clock_staged=false;(void)lpit2_init(&d->pit,0);d->uart=uart;d->pf=(struct lpfg_state){0};d->demand_pf=(struct lnp_state){0};d->high=LHP_UNUSED;d->microcode=(struct lmc_state){0};d->session=NULL;
  d->activation=(struct lpa_state){0};d->irq=(struct lig_state){0};d->entry_inflight=false;d->exits=0;d->failed=false;d->ready=true;return true;
 }
 int lgd_send(void*p,uint8_t byte){
@@ -205,9 +209,10 @@ bool lgd_init(struct lgd_context*d,const struct lgd_config*c,struct lgm_service_
 
 /* Authorize an actual owned PF before any IRQ/window side effect. */
 static bool owned_event(const struct lgd_context*d,uint64_t event,uint64_t error,uint64_t len,uint64_t vector){
- unsigned owners=(unsigned)d->pf.pending+(unsigned)d->demand_pf.pending+(unsigned)(d->high==LHP_PENDING)+(unsigned)d->msr_gp.pending;
+ unsigned owners=(unsigned)d->pf.pending+(unsigned)d->demand_pf.pending+(unsigned)(d->high==LHP_PENDING)+(unsigned)d->msr_gp.pending+(unsigned)d->bp.pending;
  if(vector||owners>1)return false;
  if(!owners)return !event&&!error&&!len;
+ if(d->bp.pending)return !d->bp.failed&&d->bp.count>=1&&d->bp.count<=LBP_MAX_FAULTS&&event==UINT64_C(0x80000603)&&!error&&len==1;
  if(d->msr_gp.pending)return !d->msr_gp.failed&&d->msr_gp.count>=1&&d->msr_gp.count<=LGP_MAX_FAULTS&&event==UINT64_C(0x80000b0d)&&!error&&!len;
  if(event!=UINT64_C(0x80000b0e)||len)return false;
  if(d->pf.pending)return !d->pf.closed&&d->pf.count>=1&&d->pf.count<=4&&d->pf.seen==((1u<<d->pf.count)-1)&&error==2;
@@ -234,8 +239,8 @@ bool lgd_before_entry(void*p,struct lgs_session*s){
   if(!pcp_entry_ok(&d->ports,pic_flags))goto done;
  }else if(!lpic_entry_ok(&d->pic,pic_flags))goto done;
  if(d->config.apic.transactions&&!lpa_before(&d->activation,&d->config.apic,s,&d->config.cpu))goto done;
- if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled||d->msr_gp.pending){
-  struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending,.high_pending=d->high==LHP_PENDING};
+ if(d->config.irq_delivery_enabled||d->config.legacy_pic_enabled||d->msr_gp.pending||d->bp.pending){
+  struct lei_snapshot g={.pf_pending=d->pf.pending||d->demand_pf.pending||d->msr_gp.pending||d->bp.pending,.high_pending=d->high==LHP_PENDING};
   uint64_t b,a,e,v,err,len;
   if(!s->platform.read_field||!s->hop.vmwrite||
      !rd(s,0x6820,&g.rflags)||!rd(s,0x4824,&b)||b>UINT32_MAX||
