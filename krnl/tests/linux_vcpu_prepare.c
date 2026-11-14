@@ -29,7 +29,7 @@ int main(void){
  for(unsigned i=0;i<p.count;i++){for(unsigned j=0;j<i;j++)assert(p.fields[i].encoding!=p.fields[j].encoding);
  /* VMCS host field categories forbidden. */
  assert((p.fields[i].encoding&0xc00)!=0xc00);}
- assert(val(0x201a)==m.eptp);assert(val(0x4004)==0xffffffff);assert(val(0x4000)==0x49);
+ assert(val(0x201a)==m.eptp);assert(val(0x4004)==LVP_EXCEPTION_BITMAP);assert(val(0x4000)==0x49);
  assert(val(0x401e)==0x42);assert(val(0x80e)==0x20&&val(0x6814)==0x6000&&val(0x480e)==103&&val(0x4822)==0x8b);assert(!(val(0x4002)&((1u<<25)|(1u<<28)|(1u<<21))));
  assert(val(0x4002)&(1u<<24));assert(val(0x6804)==0x2620);assert(val(0x6006)==0x620);
  assert(val(0x681e)==m.entry.rip&&val(0x6802)==0x1000&&val(0x2806)==0x500);
@@ -59,4 +59,5 @@ int main(void){
  assert(!lvp_prepare(0,&c,&p)&&!lvp_prepare(&m,0,&p)&&!lvp_prepare(&m,&c,0));
  assert(lvp_prepare(&m,&c,&p));
  puts("linux_vcpu_prepare: PASS (pure control/guest plan, no VM)");
+ return 0;
 }

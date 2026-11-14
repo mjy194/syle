@@ -1,0 +1,14 @@
+#include "native_candidate.h"
+#include <assert.h>
+#include <stdio.h>
+struct desc {uint32_t type,pad;uint64_t base,virt,pages,attr;};
+static struct desc map={7,0,0x100000,0,128,8};
+int main(int argc,char **argv){(void)argv;if(argc>1)map.pages=PMM_MAX_RANGES*2+2;struct syle_boot_info b={0};b.magic=SYLE_BOOT_MAGIC;b.version=SYLE_BOOT_VERSION;b.size=sizeof(b);b.boot_services_exited=1;b.descriptor_size=sizeof(map);b.descriptor_version=1;b.memory_map=(uintptr_t)&map;b.memory_map_bytes=sizeof(map);b.map_buffer=(struct syle_range){(uintptr_t)&map,sizeof(map)};uint64_t e,old,pa;struct vlm_allocation a,stale;struct vlm_handle h;
+ if(argc>1){assert(pmm_init(&b)&&pna_start(&e));static uint64_t pages[PMM_MAX_RANGES*2+1];for(unsigned i=0;i<PMM_MAX_RANGES*2+1;i++){pages[i]=pmm_alloc_page();assert(pages[i]);}assert(pna_alloc(e,&a)&&pna_page(e,a,&pa));for(unsigned i=0;i<PMM_MAX_RANGES;i++){assert(pmm_free_page(pages[2*i]));}uint64_t before=pmm_get_stats().allocated_pages;assert(!pna_release(e,a)&&pmm_get_stats().allocated_pages==before);assert(pna_pin(e,a,&h));assert(!pmm_free_page(pa));assert(pna_unpin(e,h)&&pna_drain(e));assert(!pna_end(e));assert(pmm_free_page(pages[PMM_MAX_RANGES*2-1]));assert(pmm_free_page(pages[PMM_MAX_RANGES*2]));assert(pna_release(e,a)&&pna_end(e));for(unsigned i=0;i<PMM_MAX_RANGES-1;i++){assert(pmm_free_page(pages[2*i+1]));}assert(!pmm_get_stats().allocated_pages);assert(pna_start(&old)&&old!=e&&pna_drain(old)&&pna_end(old));puts("candidate PMM release failure blocks session end until cleanup: PASS");return 0;}
+
+ assert(!pna_start(&e));pna_test_guard(false);assert(!pmm_init(&b));pna_test_guard(true);assert(pmm_init(&b)&&pna_start(&e));old=e;assert(!pna_test_exhaust_epoch());assert(!pna_start(&pa));assert(pna_alloc(e,&a)&&pna_page(e,a,&pa)&&pna_pin(e,a,&h));stale=a;assert(!pmm_init(&b));assert(!pmm_free_page(pa)&&!pna_release(e,a));assert(!pna_end(e));assert(pna_drain(e));assert(!pna_alloc(e,&a)&&!pna_end(e));
+ pna_test_guard(false);assert(!pmm_alloc_page()&&!pmm_alloc_page_below(UINT64_MAX)&&!pmm_alloc_page_above(0));assert(!pna_unpin(e,h)&&!pna_release(e,a)&&!pmm_free_page(pa));pna_test_guard(true);assert(pna_unpin(e,h)&&pna_release(e,stale)&&pna_end(e));assert(!pna_page(e,stale,&pa));
+ assert(pna_start(&e)&&e!=old);assert(pna_alloc(e,&a));assert(!pna_release(old,a)&&!pna_release(e,stale)&&!pna_pin(e,stale,&h));assert(pna_release(e,a));
+ struct vlm_allocation slots[VLM_SLOTS];for(unsigned i=0;i<VLM_SLOTS;i++)assert(pna_alloc(e,&slots[i]));uint64_t before=pmm_get_stats().allocated_pages;assert(!pna_alloc(e,&a)&&pmm_get_stats().allocated_pages==before);assert(pna_drain(e));for(unsigned i=0;i<VLM_SLOTS;i++)assert(pna_release(e,slots[i]));assert(pna_end(e)&&!pmm_get_stats().allocated_pages);
+ assert(pna_test_exhaust_epoch()&&!pna_start(&e));
+ puts("optional PMM candidate session/guard/cleanup: PASS (guard mocked on host)");return 0;}

@@ -1,7 +1,7 @@
 # Explicit reconstructed single-entry target only; never part of all.
 LR_INPUTS ?= ../../inputs
 LR_BOOT_EFI ?= ../../../linux-first-exit/linux-first-exit-esp/EFI/BOOT/BOOTX64.EFI
-LR_DEFS = -DLINUX_FIRST_EXIT_RECOVERY -DLINUX_GUEST_PROBE -DSMOKE_TEST
+LR_DEFS = -DMG_DIAGNOSTIC_GUEST_PF -DLINUX_FIRST_EXIT_RECOVERY -DLINUX_GUEST_PROBE -DSMOKE_TEST
 LR_MODS = linux_boot linux_guest_memory linux_vcpu_prepare linux_vcpu_host linux_vcpu_backend linux_vcpu_state linux_vcpu_native linux_first_exit_recovery linux_recovery_mem
 LR_OBJS = $(addprefix build/lr-,$(addsuffix .o,$(LR_MODS))) build/lr-native-asm.o build/lr-inputs.o build/lr-main.o build/lr-exceptions.o build/lr-exceptions-asm.o
 

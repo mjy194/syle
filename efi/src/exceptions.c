@@ -89,7 +89,7 @@ __attribute__((noreturn)) void exception_panic(const struct frame *f) {
     UINT64 cr2;
     __asm__ volatile("mov %%cr2,%0" : "=r"(cr2));
     log_output_mode(1);
-    if (ring3_fault) ring3_fault(f, cr2);
+    if (f->vector != 2 && ring3_fault) ring3_fault(f, cr2);
     begin_panic();
     for (unsigned pass = 0; pass < 2; ++pass) {
     log_output_mode(pass ? 2 : 1);

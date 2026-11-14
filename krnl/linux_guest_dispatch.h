@@ -13,8 +13,10 @@
 #include "pic0_ports.h"
 #include "linux_pic04_domain.h"
 #include "linux_pic04_runtime.h"
+#include "linux_host_clock_runtime.h"
 struct lgs_session;struct lgm_service_ops;struct lgs_entry_result;
 struct lgd_config {
+ const struct lhcr_source *host_clock; /* opt-in; default must be NULL */
  bool legacy_pic04_enabled; /* Separate IRQ0+IRQ4 edge PIC domain, opt-in. */
  bool legacy_idle_advance; /* Explicit bounded discrete idle-time policy. */
  bool legacy_pic_enabled; /* Opt-in, exclusive with APIC/lia. */
@@ -38,7 +40,13 @@ struct lgd_config {
 #include "linux_msr_gp.h"
 #include "linux_int3.h"
 #include "linux_port80.h"
+/* Last dispatch checkpoint, diagnostic only; never authorizes a resume. */
+enum lgd_stage {LGD_STAGE_NONE,LGD_STAGE_CONTEXT,LGD_STAGE_EXIT,
+ LGD_STAGE_CLOCK,LGD_STAGE_RECEIPT,LGD_STAGE_ROUTE,LGD_STAGE_PF,LGD_STAGE_COMPLETE};
 struct lgd_context {
+ struct lhc_clock host_clock;
+ uint64_t clock_irq0_count,clock_irq0_last,clock_irq0_min,clock_irq0_max;
+ enum lgd_stage diagnostic_stage;
  struct lpd_domain pic04;struct lpr_runtime pic04_run;unsigned pic04_idle_reason;
  struct lbp_state bp;
  struct lgp_state msr_gp;
@@ -69,11 +77,15 @@ struct lgd_context {
 bool lgd_apic_now(void*,uint64_t*);
 bool lgd_init(struct lgd_context*,const struct lgd_config*,struct lgm_service_ops*);
 bool lgd_reset(void*);
+bool lgd_clock_start(void*);
+bool lgd_clock_stop(void*);
 bool lgd_before_entry(void*,struct lgs_session*);
 bool lgd_after_entry(void*,struct lgs_session*,const struct lgs_entry_result*);
 bool lgd_dispatch(void*,struct lgs_session*,uint32_t);
 int lgd_send(void*,uint8_t);
 int lgd_recv(void*);
+/* Read-only PIC04 RX capacity; zero full, negative ABI errors. */
+int lgd_space(void*);
 /* Default profile remains APIC-hidden. An explicitly configured entire APIC
  * domain starts inactive: only the first before_entry evidence gate activates
  * the experimental profile, and every entry revalidates controls/EPT/identity.

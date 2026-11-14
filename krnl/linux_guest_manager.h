@@ -6,12 +6,16 @@
  * in and immutable linked kernel/initrd. Optional build only, not all target. */
 struct lgm_service_ops {
  void *ctx;
+ bool (*clock_start)(void *);
+ bool (*clock_stop)(void *);
  bool (*reset)(void *);
  bool (*dispatch)(void *,struct lgs_session *,uint32_t);
  /* Bounded queues; accepted bytes must return success despite deferred IRQ.
   * Never repeat a committed push/pop after IRQ publication failure. */
  int (*send)(void *,uint8_t);
  int (*recv)(void *);
+ /* Pure bounded RX capacity; not a persistent reservation. */
+ int (*space)(void *);
  /* Optional pair, same lifecycle/outcome contract as lgs_platform. */
  bool (*before_entry)(void *,struct lgs_session *);
  bool (*after_entry)(void *,struct lgs_session *,const struct lgs_entry_result *);

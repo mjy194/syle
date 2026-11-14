@@ -21,4 +21,9 @@ int main(void){original_tests();struct pt0 p;setup_timer(&p,4773);struct lip_idl
  legacy();assert(run(52));mock.f[0x4826]=0;mock.f[0x440c]=2;assert(run(16)&&session.native.gpr[0]==4775000&&dispatch.ticks==4775);mock.f[0x6400]=0x610048;assert(run(30)&&dispatch.pit.ticks==4776);mock.f[0x6400]=0x710048;assert(run(30)&&dispatch.ticks==4777);
  setup_timer(&p,10);p.pic.seen=1;assert(!lip_plan(&p,0,&g,&next));
  setup_timer(&p,10);assert(pt0_tick(&p,11));uint64_t token;uint8_t vector;assert(pic0_reserve(&p.pic,&token,&vector));assert(pic0_accept(&p.pic,1,token,vector));writepic(&p.pic,0x20,0x20);assert(lip_plan(&p,11,&g,&next)&&next==21); /* historical receipt is not pending */
+ /* Mode4 count1 jumps to the single rising strobe, then remains quiescent. */
+ setup_timer(&p,10);b=0x38;assert(pit0_access(&p.timer,0,0x43,true,&b));b=1;assert(pit0_access(&p.timer,0,0x40,true,&b));b=0;assert(pit0_access(&p.timer,0,0x40,true,&b));
+ assert(lip_plan(&p,0,&g,&next)&&next==3);assert(pt0_tick(&p,next)&&p.timer.strobe_done&&p.timer.edges==1);
+ assert(pic0_reserve(&p.pic,&token,&vector)&&pic0_accept(&p.pic,1,token,vector));writepic(&p.pic,0x20,0x20);
+ assert(lip_plan(&p,3,&g,&next)&&next==4);assert(pt0_tick(&p,1000)&&p.timer.edges==1);assert(lip_plan(&p,1000,&g,&next)&&next==1001);
  puts("idle PIT host PASS");}

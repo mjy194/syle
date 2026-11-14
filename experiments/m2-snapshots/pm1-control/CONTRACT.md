@@ -1,0 +1,6 @@
+# PM1 control SCI_EN diagnostic profile
+Run32 actual port B004 IN16 66 ED failed after BootMenu succeeded. Pinned EDK2 2025.02 OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c has IoOr16((Pmba & ~BIT0)+4,BIT0) in PciAcpiInitialization.
+Independent SYLE_FPM_SCI_CONTROL permits enabled fixed PMBA B000 control B004 word read/write of SCI_EN only (0/1). State resets 0. No PM1 event enable/status ports or SCI event source/delivery implemented; no sleep, SMI, DMA authority. Other bits and widths rejected. Reads preserve high RAX, writes preserve GPR; publish control only after RIP commit, failure terminal; existing reference sample effects persist.
+Conditional fpm_state ABI: only quiet observer and new fpp/pmtimer objects built with macro. Other/default targets unchanged. The observer source, trace limits 6144/2MiB/30s and all clock/IRQ code stay unchanged.
+Host test in ../pmcontrol-run32 covers actual fpp transaction and all nonzero unsupported words, wrong forms, disabled decode and RIP failure. This is not full ACPI emulation.
+No VM executed. Native ELF built but target machine must verify base hashes and fresh build/gates. Run32 actual source must match BASE hashes before applying; no automatic retry. Current ledger inferred34 from run32 one maintenance.

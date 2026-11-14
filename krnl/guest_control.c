@@ -29,7 +29,7 @@ static int64_t dispose(struct guest_control *c) {
 }
 static int64_t call_locked(struct guest_control *c, uint64_t op,
                             uint64_t handle, uint64_t arg) {
-    if (op < SYLE_GUEST_CREATE || op > SYLE_GUEST_CONSOLE_RECV) return ERR(EINVAL);
+    if (op < SYLE_GUEST_CREATE || op > SYLE_GUEST_CONSOLE_SPACE) return ERR(EINVAL);
     if (op==SYLE_GUEST_CREATE) {
         if (handle || arg!=SYLE_GUEST_BOOT_PROFILE) return ERR(EINVAL);
         if (!c->configured) return ERR(ENOTSUP);
@@ -60,6 +60,12 @@ static int64_t call_locked(struct guest_control *c, uint64_t op,
     if (op==SYLE_GUEST_STATUS) return c->state;
     if (op==SYLE_GUEST_DESTROY) return dispose(c);
     if (c->state==SYLE_GUEST_QUARANTINED) return ERR(EQUARANTINED);
+    if (op==SYLE_GUEST_CONSOLE_SPACE) {
+        if (c->state!=SYLE_GUEST_RUNNING) return ERR(ESTATE);
+        if (!c->backend.console_space) return ERR(ENOTSUP);
+        int n=c->backend.console_space(c->context);
+        return n>16 ? ERR(EBACKEND) : n;
+    }
     if (op==SYLE_GUEST_CONSOLE_SEND)
         return c->backend.console_send ? c->backend.console_send(c->context,(uint8_t)arg) : ERR(ENOTSUP);
     if (op==SYLE_GUEST_CONSOLE_RECV)

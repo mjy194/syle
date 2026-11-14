@@ -49,6 +49,13 @@ static bool readable(uint32_t n){
 bool lvn_read_msr(void *ctx,uint32_t n,uint64_t *v){
  return v&&readable(n)&&allowed()&&lvn_read_raw(ctx,n,v);
 }
+#ifdef MG_HOST_CLOCK
+/* Exact read-only Hyper-V reference counter. Caller verifies Hv#1 and feature
+ * advertisement; reuse the armed #GP/#UD fixup, never a naked RDMSR. */
+bool lvn_read_clock_reference(uint64_t*v){
+ return v&&allowed()&&lvn_read_raw(0,0x40000020,v);
+}
+#endif
 bool lvn_write_msr(void *ctx,uint32_t n,uint64_t v){
  struct lvn_context*c=ctx;
  return c&&c->enabled&&listed(n)&&allowed()&&lvn_write_raw(ctx,n,v);

@@ -1,0 +1,1 @@
+Independent pm_review: double-profile ASan/UBSan PASS; actual ELF linked only new macro-consistent quiet observer/fpp/pmtimer objects, old FC fpp/pmtimer and other observers excluded. fwcfg transaction only calls fpp_encoding, no struct access. B004/width2/value<=1 verified in disassembly, observer unchanged. No VM.

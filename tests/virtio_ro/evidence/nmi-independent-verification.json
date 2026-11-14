@@ -1,0 +1,50 @@
+{
+  "0": {
+    "verified": true,
+    "one_guest_inject_request": true,
+    "serial_vector": 2,
+    "saved_cs": 43,
+    "saved_rip": "0x8000000054",
+    "before_state": 1,
+    "handle": 1,
+    "after_cpl": 0,
+    "after_hlt": 1,
+    "owner_exit_calls": 0,
+    "owned_unique_pages": 32837,
+    "pmm_allocated_pages": 33099,
+    "unchanged_snapshots_sha256": {
+      "session": "7bf6718523c94aca2def1a59a2b686fffe8bd99f43a4c5458aa282b707add820",
+      "managed_guest": "efb2c215c0e32b3ad0b23c1034185a34f0257f96918f1da853abdc18832c8667",
+      "nmi_probe_owner_exit_calls": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "stats": "a8393c08d0717669d2ff5adec87a1a8a1c7bb4fc3ca482721117b5e84c7bb200",
+      "available_count": "7aa8ca4a02506da9133d8f889678b76f716ce45d02e22fdb7b70a15e56a0eff8",
+      "available": "c7fd2c07bc6509e7046fab0a9e2c2c964fa8a99919f7c444f312910c70f066a6"
+    },
+    "tr_observation": "TR =0018 00000000043c6c00 00000067 00008b00 DPL=0 TSS64-busy",
+    "scope": "two isolated guest executions only; user CS before/NMI CS after, not post-VM-exit host-cache proof"
+  },
+  "1": {
+    "verified": true,
+    "one_guest_inject_request": true,
+    "serial_vector": 2,
+    "saved_cs": 43,
+    "saved_rip": "0x8000000084",
+    "before_state": 2,
+    "handle": 1,
+    "after_cpl": 0,
+    "after_hlt": 1,
+    "owner_exit_calls": 0,
+    "owned_unique_pages": 32837,
+    "pmm_allocated_pages": 33099,
+    "unchanged_snapshots_sha256": {
+      "session": "a6fd9d17250754149f075be5f57e6357be471ef7ae883fa314f7bf81ae179a25",
+      "managed_guest": "bb0bb956416b36f83077b5682597b8a4adb1d20c4001bc33b11117cff21a34a0",
+      "nmi_probe_owner_exit_calls": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "stats": "a8393c08d0717669d2ff5adec87a1a8a1c7bb4fc3ca482721117b5e84c7bb200",
+      "available_count": "7aa8ca4a02506da9133d8f889678b76f716ce45d02e22fdb7b70a15e56a0eff8",
+      "available": "c7fd2c07bc6509e7046fab0a9e2c2c964fa8a99919f7c444f312910c70f066a6"
+    },
+    "tr_observation": "TR =0018 00000000043c6c00 00000067 00008b00 DPL=0 TSS64-busy",
+    "scope": "two isolated guest executions only; user CS before/NMI CS after, not post-VM-exit host-cache proof"
+  }
+}

@@ -1,3 +1,4 @@
+#include "../linux_clock_slice.h"
 #include "../linux_guest_session.h"
 #include <assert.h>
 #include <stdio.h>
@@ -22,7 +23,7 @@ static bool before(void*x,struct lgs_session*z){(void)x;assert(z==&s);++f.before
 static bool after(void*x,struct lgs_session*z,const struct lgs_entry_result*r){(void)x;assert(z==&s);++f.after;receipt=*r;return !f.after_fail;}
 static bool dispatch(void*x,struct lgs_session*z,uint32_t r){(void)x;assert(z==&s&&r==52);return !f.dispatch_fail;}
 static void fatal(void*x){(void)x;if(expect_fatal)longjmp(fatal_jump,1);assert(!"unexpected fatal");}
-static bool write(void*x,uint32_t field,uint64_t value){(void)x;assert(field==0x482e&&value==(1u<<24));++f.writes;return true;}
+static bool write(void*x,uint32_t field,uint64_t value){(void)x;assert(field==0x482e&&value==(1u<<(LGS_PREEMPT_BITS-4)));++f.writes;return true;}
 static bool invalidate(void*x,uint64_t eptp){(void)x;assert(eptp==0x101e);return true;}
 static bool hook_fail;static unsigned hook_calls;
 static bool prepare_hook(void*x,struct lgs_session*z){(void)x;hook_calls++;

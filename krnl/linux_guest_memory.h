@@ -1,6 +1,7 @@
 #ifndef SYLE_LINUX_GUEST_MEMORY_H
 #define SYLE_LINUX_GUEST_MEMORY_H
 #include "simple_guest.h"
+#include "guest_memory_role.h"
 #include "linux_boot.h"
 #define LGM_RAM_SIZE (128u*1024u*1024u)
 #define LGM_PAGE_COUNT (LGM_RAM_SIZE/4096u)
@@ -18,6 +19,11 @@ struct linux_guest_memory {
 };
 bool lgm_prepare(struct linux_guest_memory*,const struct sg_memory_ops*,
  const void*,size_t,const void*,size_t,const char*);
+/* Additive opt-in: explicit RAM/EPT roles at the real allocation sites.
+ * Uses owner.context for allocate_role; owner.allocate may be NULL. This API
+ * does not establish DMA permission, mapping leases or lifecycle exclusion. */
+bool lgm_prepare_roles(struct linux_guest_memory*,const struct sg_memory_ops*,
+ sg_allocate_role_fn,const void*,size_t,const void*,size_t,const char*);
 /* If ever installed: caller proves VMCLEAR, INVEPT and VMXOFF completed and
  * no vCPU references pages. Failed releases retain exact ownership tokens. */
 bool lgm_release(struct linux_guest_memory*);

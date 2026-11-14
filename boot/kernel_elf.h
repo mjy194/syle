@@ -4,7 +4,7 @@
 #include <stdint.h>
 #define SYLE_KERNEL_BASE UINT64_C(0x04000000)
 #define SYLE_KERNEL_MAX_SPAN (8u * 1024u * 1024u)
-#define SYLE_KERNEL_MAX_FILE (4u * 1024u * 1024u)
+#define SYLE_KERNEL_MAX_FILE (5u * 1024u * 1024u)
 struct syle_kernel_plan { uint64_t base, size, entry; };
 /* Strict, bounded ELF64 ET_EXEC identity-addressed kernel image.
  * Return 0 on success, -1 on malformed/unsupported input. Plan is unchanged

@@ -27,7 +27,7 @@ static void setup(void){memset(&s,0,sizeof s);memset(&tx,0,sizeof tx);memset(&li
  put(tables,s.memory.tables[1]|7,8);put(tables+4096,s.memory.tables[2]|7,8);
  for(unsigned i=0;i<LGM_PT_COUNT;i++){put(tables+8192+8*i,s.memory.tables[i+3]|7,8);for(unsigned j=0;j<512;j++)put(tables+(i+3)*4096+8*j,s.memory.pages[i*512+j]|0x37,8);}
  f[0x4000]=0x49;f[0x4002]=(1u<<7)|(1u<<9)|(1u<<10)|(1u<<11)|(1u<<12)|(1u<<15)|(1u<<16)|(1u<<19)|(1u<<20)|(1u<<23)|(1u<<24)|(1u<<29)|(1u<<30)|(1u<<31);
- f[0x401e]=0x42;f[0x4012]=(1u<<2)|(1u<<9)|(1u<<14)|(1u<<15);f[0x400c]=(1u<<2)|(1u<<9)|(15u<<18);f[0x4004]=UINT32_MAX;f[0x6000]=f[0x6002]=UINT64_MAX;f[0x482e]=1u<<23;f[0x681e]=s.memory.entry.rip;f[0x681c]=s.memory.entry.rsp;f[0x201a]=s.memory.eptp;
+ f[0x401e]=0x42;f[0x4012]=(1u<<2)|(1u<<9)|(1u<<14)|(1u<<15);f[0x400c]=(1u<<2)|(1u<<9)|(15u<<18);f[0x4004]=LVP_EXCEPTION_BITMAP;f[0x6000]=f[0x6002]=UINT64_MAX;f[0x482e]=1u<<23;f[0x681e]=s.memory.entry.rip;f[0x681c]=s.memory.entry.rsp;f[0x201a]=s.memory.eptp;
  uint8_t*bp=ram+0x90000;put(bp+0x70,LAT_GPA,8);put(bp+0x202,0x53726448,4);put(bp+0x206,0x20f,2);bp[0x1e8]=1;put(bp+0x2d0,LAT_GPA,8);put(bp+0x2d8,LAT_REGION_SIZE,8);put(bp+0x2e0,2,4);size_t n=0;assert(lar_build(ram+LAT_GPA,LAR_SIZE,LAT_GPA,&n)&&n==LAR_SIZE);
 }
 static struct lvp_cpu_features host={UINT32_MAX,UINT32_MAX,32};

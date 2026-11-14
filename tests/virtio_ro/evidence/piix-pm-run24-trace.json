@@ -1,0 +1,8 @@
+{
+  "serial_sha256": "d1d5364f801c4898863aece5f03526fa63594df9f9b2db95ab6c3032573e8f4c",
+  "config_address_samples": 308,
+  "pm_command_04_samples": 0,
+  "pmba_40_samples": 75,
+  "pmiose_80_samples": 33,
+  "scope": "logged config address samples only; does not prove absent unlogged events"
+}

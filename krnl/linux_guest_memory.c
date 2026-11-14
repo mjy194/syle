@@ -21,9 +21,9 @@ bool lgm_release(struct linux_guest_memory*m){
  if(ok)wipe(&m->owner,sizeof m->owner);
  return ok;
 }
-static void*owned(struct linux_guest_memory*m,uint64_t*token){
+static void*owned(struct linux_guest_memory*m,uint64_t*token,enum sg_memory_role role,sg_allocate_role_fn allocate_role){
  const struct sg_memory_ops*o=&m->owner;
- *token=o->allocate(o->context);
+ *token=allocate_role?allocate_role(o->context,role):o->allocate(o->context);
  if(!*token||(*token&~PHYS_MASK)||!o->writeback(o->context,*token))return 0;
  void*p=o->map(o->context,*token);
  if(!p||((uintptr_t)p&7))return 0;
@@ -50,14 +50,14 @@ static bool zero(void*ctx,uint64_t gpa,size_t n){
   wipe(p+off,k);gpa+=k;n-=k;
  }return true;
 }
-bool lgm_prepare(struct linux_guest_memory*m,const struct sg_memory_ops*o,
+static bool prepare(struct linux_guest_memory*m,const struct sg_memory_ops*o,sg_allocate_role_fn allocate_role,
  const void*image,size_t size,const void*initrd,size_t initrd_size,const char*cmd){
  struct lb_plan plan;struct lb_entry_state entry;
- if(!m||!o||!o->allocate||!o->release||!o->map||!o->writeback||!fresh(m)||!initrd||!initrd_size)return false;
+ if(!m||!o||(!allocate_role&&!o->allocate)||!o->release||!o->map||!o->writeback||!fresh(m)||!initrd||!initrd_size)return false;
  if(!lb_inspect(image,size,initrd_size,cmd,&plan))return false;
  m->owner=*o;
- for(unsigned i=0;i<LGM_PAGE_COUNT;i++)if(!owned(m,&m->pages[i]))goto fail;
- for(unsigned i=0;i<LGM_TABLE_COUNT;i++)if(!owned(m,&m->tables[i]))goto fail;
+ for(unsigned i=0;i<LGM_PAGE_COUNT;i++)if(!owned(m,&m->pages[i],SG_MEMORY_RAM,allocate_role))goto fail;
+ for(unsigned i=0;i<LGM_TABLE_COUNT;i++)if(!owned(m,&m->tables[i],SG_MEMORY_EPT,allocate_role))goto fail;
  struct lb_writer writer={m,copy,zero};
  if(!lb_load(image,size,initrd,initrd_size,cmd,&writer,&plan)||!lb_entry_prepare(&plan,&writer,&entry))goto fail;
  for(unsigned i=0;i<2;i++){
@@ -72,4 +72,12 @@ bool lgm_prepare(struct linux_guest_memory*m,const struct sg_memory_ops*o,
  m->plan=plan;m->entry=entry;m->eptp=m->tables[0]|0x1e;m->prepared=true;return true;
 fail:
  (void)lgm_release(m);return false;
+}
+bool lgm_prepare(struct linux_guest_memory*m,const struct sg_memory_ops*o,
+ const void*image,size_t size,const void*initrd,size_t initrd_size,const char*cmd){
+ return prepare(m,o,0,image,size,initrd,initrd_size,cmd);
+}
+bool lgm_prepare_roles(struct linux_guest_memory*m,const struct sg_memory_ops*o,sg_allocate_role_fn allocate_role,
+ const void*image,size_t size,const void*initrd,size_t initrd_size,const char*cmd){
+ return allocate_role&&prepare(m,o,allocate_role,image,size,initrd,initrd_size,cmd);
 }

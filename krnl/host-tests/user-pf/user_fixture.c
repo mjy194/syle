@@ -42,12 +42,36 @@ int user_model_tests(void){
  for(unsigned k=0;k<12;k++){write_setup();switch(k){
  case 0:user_put(0x3010,0x4005);break;case 1:user_put(0x3010,0x4003);break;case 2:user_put(0x4000,0xe001);break;
  case 3:user_put(0x4000,UINT64_C(0x800000000000e005));break;case 4:user_put(0x4000,0);break;case 5:missing=14;break;
- case 6:user_put(0x4008,0xe007);break;case 7:user_g.error=7;break;case 8:user_g.error=4;break;case 9:user_g.address=UINT64_C(0x800000000000);break;
+ case 6:user_put(0x4008,0xe007);break;case 7:user_g.error=7;break;case 8:user_g.error=5;break;case 9:user_g.address=UINT64_C(0x800000000000);break;
  case 10:user_put(0x3010,UINT64_C(0x8000000000004007));break;case 11:user_g.rip=0x401000;break;
  }assert(!valid());}
  for(unsigned i=1;i<=34;i++){write_setup();failread=i;assert(!lup_inject(&user_state,&user_session)&&user_state.failed&&!writes&&!user_state.count);}
  /* NX data ancestor is permitted for writes; separate present execution path. */
  write_setup();user_g.address=0x600000;user_fields[0x6400]=user_g.address;user_put(0x3018,UINT64_C(0x800000000000f007));assert(valid());
  for(unsigned i=1;i<=3;i++){write_setup();failwrite=i;assert(!lup_inject(&user_state,&user_session)&&user_state.failed&&!user_state.count&&!user_state.pending&&!user_session.native.cr2);}
+ /* User read fault: data ancestors may be RO/NX, but must remain user.
+  * Instruction RIP independently requires an owned executable user mapping. */
+ write_setup();user_g.error=4;user_fields[0x4406]=4;
+ user_put(0x3010,0x4005);assert(valid());
+ assert(lup_inject(&user_state,&user_session)&&user_fields[0x4018]==4&&user_state.history[0].error==4);
+ write_setup();user_g.error=4;user_g.address=0x600000;user_fields[0x4406]=4;user_fields[0x6400]=user_g.address;
+ user_put(0x3018,UINT64_C(0x800000000000f005));assert(valid());
+ for(unsigned k=0;k<8;k++){
+  write_setup();user_g.error=4;
+  switch(k){case 0:user_put(0x3010,0x4003);break;
+   case 1:user_put(0x4000,0xe001);break;case 2:user_put(0x4000,0);break;
+   case 3:user_put(0x4008,0xe005);break;case 4:user_g.error=5;break;
+   case 5:user_g.error=7;break;case 6:user_put(0x4000,UINT64_C(0x800000000000e005));break;
+   case 7:user_g.address=UINT64_C(0x800000000000);break;}
+  assert(!valid());
+ }
+ for(unsigned i=1;i<=34;i++){
+  write_setup();user_g.error=4;user_fields[0x4406]=4;failread=i;
+  assert(!lup_inject(&user_state,&user_session)&&user_state.failed&&!writes&&!user_state.count);
+ }
+ for(unsigned i=1;i<=3;i++){
+  write_setup();user_g.error=4;user_fields[0x4406]=4;failwrite=i;
+  assert(!lup_inject(&user_state,&user_session)&&user_state.failed&&!user_state.count&&!user_state.pending&&!user_session.native.cr2);
+ }
  puts("strict user PF host permission/metadata/ownership/failure matrix PASS");return 0;
 }

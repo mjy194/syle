@@ -46,7 +46,11 @@ bool lvp_prepare(const struct linux_guest_memory*m,const struct lvp_caps*c,struc
  struct lvp_plan p={0};
 #define W(k,v) do{if(!add(&p,(k),(v)))return false;}while(0)
  W(0x4000,pin);W(0x4002,pri);W(0x401e,sec);W(0x4012,en);W(0x400c,ex);
- W(0x201a,m->eptp);W(0x4004,UINT32_MAX);W(0x4006,0);W(0x4008,0);
+ W(0x201a,m->eptp);
+ /* PF native by default; with mask=match=0 bit14 alone selects interception.
+  * The historical all-exception bitmap is an explicit diagnostic build. */
+ W(0x4004,LVP_EXCEPTION_BITMAP);
+ W(0x4006,0);W(0x4008,0);
  W(0x400a,0);W(0x400e,0);W(0x4010,0);W(0x4014,0);W(0x4016,0);
  W(0x4018,0);W(0x401a,0);W(0x2010,0);
  W(0x6000,UINT64_MAX);W(0x6002,UINT64_MAX);W(0x6004,e->cr0);W(0x6006,e->cr4);

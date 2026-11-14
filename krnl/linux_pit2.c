@@ -43,7 +43,7 @@ enum lpit_result lpit2_io(struct lpit2*p,uint64_t g[15],uint64_t rip,unsigned cp
  *p=next;if(!write)g[0]=(g[0]&~UINT64_C(255))|v;return LPIT_COMMITTED;
 }
 enum lpit_result lpit2_rdtsc(struct lpit2*p,uint64_t g[15],uint64_t rip,unsigned cpl,uint32_t reason,unsigned len,uint64_t tick,void*c,bool(*w)(void*,uint32_t,uint64_t)){
- if(!p||!g||!w||p->failed||cpl||reason!=16||len!=2||!span(rip,len))return LPIT_REJECTED;
+ if(!p||!g||!w||p->failed||(cpl!=0&&cpl!=3)||reason!=16||len!=2||!span(rip,len))return LPIT_REJECTED;
  struct lpit2 next=*p;if(!advance(&next,tick))return LPIT_REJECTED;
  if(!w(c,0x681e,rip+2)){p->failed=true;return LPIT_FATAL;}
  *p=next;uint64_t tsc=tick*1000;g[0]=(uint32_t)tsc;g[3]=(uint32_t)(tsc>>32);return LPIT_COMMITTED;

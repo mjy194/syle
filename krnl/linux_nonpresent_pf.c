@@ -51,6 +51,20 @@ bool lnp_observe(const struct lnp_state*s,uint64_t reason,uint64_t vector,uint64
  if(s->pending&&reason!=10&&reason!=14&&reason!=16&&reason!=28&&reason!=29&&reason!=30&&reason!=31&&reason!=32&&reason!=40&&reason!=48)return false;
  *out=*s;out->pending=false;return true;
 }
+bool lnp_observe_pf(const struct lnp_state*s,const struct lnp_pf_receipt*r,struct lnp_state*out){
+ if(!s||!r||!out||s->failed||!s->pending||!s->count||s->count>LNP_MAX_FAULTS||
+ r->reason||r->info!=UINT64_C(0x80000b0e)||r->vector||
+ r->event!=UINT64_C(0xb0e)||r->entry_length||
+ r->entry_error!=s->history[s->count-1].error)return false;
+ const uint64_t old=r->entry_error,next=r->error;
+ if((old!=0&&old!=2&&old!=4&&old!=6&&old!=20)||(next!=0&&next!=2&&next!=4&&next!=6&&next!=20))return false;
+ /* SDM 27.6.1.2 / 28.2.4: a #PF during injected-event delivery reports
+  * IDT vectoring. A direct #DF/#TF is not this exact #PF exit. A handler-fetch
+  * fault is a new fault after the original vectoring, and is validated below
+  * by the normal injection path. We neither infer completion from the cleared
+  * entry valid bit alone nor accept timer/NMI/general exception receipts. */
+ *out=*s;out->pending=false;return true;
+}
 static bool owned(void*p,uint64_t g,void*out,size_t n){
  struct lgs_session*s=p;if(!n||g>=LGM_RAM_SIZE||n>LGM_RAM_SIZE-g)return false;uint8_t*b=out;
  for(size_t i=0;i<n;i++){uint64_t pa=s->memory.pages[(g+i)/4096];if(!pa||(pa&4095)||(pa>>52))return false;

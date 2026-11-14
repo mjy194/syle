@@ -139,7 +139,15 @@ int main(int argc,char **argv) {
     /* File and physical-span limits are independent and inclusive. */
     unsigned char *large=calloc(1,SYLE_KERNEL_MAX_FILE); assert(large);
     valid(); memcpy(large,image,sizeof image);
+    assert(!syle_kernel_elf_inspect(large,4u*1024u*1024u+1,&p));
     assert(!syle_kernel_elf_inspect(large,SYLE_KERNEL_MAX_FILE,&p));
+    memset(output,0xa5,sizeof output);
+    assert(!syle_kernel_elf_load(large,SYLE_KERNEL_MAX_FILE,output,sizeof output,&p));
+    assert(output[0]==0x55 && output[0x2000]==0x66 && output[0x4000]==0xa5);
+    p=(struct syle_kernel_plan){1,2,3};memset(output,0xa5,sizeof output);
+    assert(syle_kernel_elf_load(large,SYLE_KERNEL_MAX_FILE+1,output,sizeof output,&p)==-1);
+    assert(p.base==1 && p.size==2 && p.entry==3);
+    for(size_t i=0;i<sizeof output;i++)assert(output[i]==0xa5);
     assert(syle_kernel_elf_inspect(large,SYLE_KERNEL_MAX_FILE+1,&p)==-1);
     free(large);
     valid();memcpy(&q,image+64+56,sizeof q);

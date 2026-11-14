@@ -1,4 +1,8 @@
 #include "ring3.h"
+#include "../include/syle/host_console.h"
+#ifdef SYLE_HOST_UART_INPUT
+extern int host_console_recv(void);
+#endif
 #include "guest_control.h"
 #include "paging.h"
 #include "memory.h"
@@ -81,8 +85,14 @@ void ring3_syscall(struct frame *f) {
     case SYLE_GUEST_CREATE: case SYLE_GUEST_START: case SYLE_GUEST_STOP:
     case SYLE_GUEST_STATUS: case SYLE_GUEST_DESTROY: case SYLE_GUEST_REAP:
     case SYLE_GUEST_STEP: case SYLE_GUEST_CONSOLE_SEND: case SYLE_GUEST_CONSOLE_RECV:
+    case SYLE_GUEST_CONSOLE_SPACE:
         f->rax=(uint64_t)guest_control_call(&managed_guest,1,f->rax,f->rdi,f->rsi);
         break;
+#ifdef SYLE_HOST_UART_INPUT
+    case SYLE_HOST_CONSOLE_RECV:
+        f->rax=(uint64_t)(int64_t)((f->rdi||f->rsi)?SYLE_HOST_CONSOLE_INVALID:host_console_recv());
+        break;
+#endif
     case 1:
         if (!readable(f->rdi, f->rsi)) { f->rax = UINT64_MAX; break; }
         for (uint64_t i = 0; i < f->rsi; ++i) {
@@ -108,7 +118,7 @@ void ring3_syscall(struct frame *f) {
 /* Shared exception hook. Diagnostics assert CPU isolation; the normal
  * bootstrap currently halts on a user fault instead of recovering a process. */
 void ring3_fault(const struct frame *f, uint64_t cr2) {
-    if ((f->cs & 3) != 3) return;
+    if (f->vector == 2 || (f->cs & 3) != 3) return;
     guest_owner_exit();
     log_text("RING3.USER_FAULT vector="); log_hex(f->vector);
     log_text("RING3.USER_FAULT error="); log_hex(f->error);

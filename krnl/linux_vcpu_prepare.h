@@ -2,6 +2,16 @@
 #define SYLE_LINUX_VCPU_PREPARE_H
 #include "linux_guest_memory.h"
 #define LVP_MAX_FIELDS 96u
+#if defined(MG_NATIVE_GUEST_PF) && defined(MG_DIAGNOSTIC_GUEST_PF)
+#error "Native and diagnostic guest PF profiles are mutually exclusive"
+#endif
+#ifdef MG_DIAGNOSTIC_GUEST_PF
+#define LVP_DIAGNOSTIC_PF 1
+#define LVP_EXCEPTION_BITMAP UINT32_MAX
+#else
+#define LVP_DIAGNOSTIC_PF 0
+#define LVP_EXCEPTION_BITMAP (UINT32_MAX & ~(UINT32_C(1) << 14))
+#endif
 struct lvp_caps {
  uint64_t pin,primary,secondary,entry,exit,ept;
  uint64_t cr0_fixed0,cr0_fixed1,cr4_fixed0,cr4_fixed1;
@@ -24,7 +34,9 @@ struct lvp_plan {
  * supply its private zeroed TSS page (RSP0=0x80000, IST=0, I/O map base104),
  * and matching busy TSS GDT descriptor at 0x20; GDT limit47. This models
  * an already loaded TR, not an LTR operation. Task switching is unsupported.
- * All interrupts/exceptions initially exit; runtime must not inject an event
+ * Default: guest PF is delivered natively (bit14 clear, mask=match=0).
+ * MG_DIAGNOSTIC_GUEST_PF explicitly enables the historical PF intercept.
+ * Other interrupts/exceptions and controls are unchanged; runtime must not inject an event
  * requiring an unconfigured IST or privilege transition. WBINVD exits required.
  * Caps are effective true controls when available, otherwise legacy controls.
  */

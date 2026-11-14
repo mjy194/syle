@@ -12,6 +12,8 @@ static int prepare(void *ctx,uint64_t profile) { struct fake *f=ctx; event(f,'p'
 static int start(void *ctx) { struct fake *f=ctx; event(f,'s'); assert(f->allocated); f->running=1; return f->fail_start; }
 static int stop(void *ctx) { struct fake *f=ctx; event(f,'t'); if(f->fail_stop) return 1; f->running=0; return 0; }
 static int release(void *ctx) { struct fake *f=ctx; event(f,'r'); assert(!f->running); if(f->fail_release) return 1; f->allocated=0; return 0; }
+static int space_value=16,space_calls;
+static int space(void*p){struct fake*f=p;space_calls++;assert(guest_control_call(f->c,7,SYLE_GUEST_CONSOLE_SPACE,f->c->handle,0)==E(EBUSY));return space_value;}
 static int queued=-1;
 static int send_byte(void *ctx,uint8_t byte){(void)ctx;if(queued!=-1)return E(EBUSY);queued=byte;return 0;}
 static int recv_byte(void *ctx){(void)ctx;if(queued==-1)return E(EBUSY);int b=queued;queued=-1;return b;}
@@ -31,7 +33,14 @@ int main(void) {
  assert(call(&c,SYLE_GUEST_CONSOLE_SEND,h,256)==E(EINVAL));
  assert(call(&c,SYLE_GUEST_CONSOLE_SEND,h,65)==E(ENOTSUP));
  assert(call(&c,SYLE_GUEST_CONSOLE_RECV,h,0)==E(ENOTSUP));
+ assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h,0)==E(ESTATE));
  assert(call(&c,SYLE_GUEST_START,h,0)==0);assert(call(&c,SYLE_GUEST_START,h,0)==E(ESTATE));
+ assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h,0)==E(ENOTSUP));c.backend.console_space=space;
+ assert(guest_control_call(&c,8,SYLE_GUEST_CONSOLE_SPACE,h,0)==E(EPERM));
+ assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h+1,0)==E(ENOENT));assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h,1)==E(EINVAL));assert(!space_calls);
+ assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h,0)==16);space_value=0;assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h,0)==0);
+ space_value=17;assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h,0)==E(EBACKEND));space_value=E(EBUSY);assert(call(&c,SYLE_GUEST_CONSOLE_SPACE,h,0)==E(EBUSY));
+
  assert(call(&c,SYLE_GUEST_STOP,h,0)==0);assert(call(&c,SYLE_GUEST_STOP,h,0)==0);
  assert(call(&c,SYLE_GUEST_START,h,0)==0);assert(call(&c,SYLE_GUEST_DESTROY,h,0)==0);
  assert(!strcmp(f.trace,"pststr"));assert(!f.allocated);

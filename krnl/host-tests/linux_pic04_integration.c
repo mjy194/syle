@@ -22,6 +22,19 @@ static bool reentrant_write(void*p,uint32_t f,uint64_t v){
 static bool safe(void*p){(void)p;return true;}
 int main(void){
  old_regression();
+ /* Pure RX capacity: no FIFO overflow/IRQ/clock mutation and no entry races. */
+ setup04();struct lgd_context capacity_before=dispatch;assert(lgd_space(&dispatch)==1&&!memcmp(&dispatch,&capacity_before,sizeof dispatch));
+ assert(lgd_send(&dispatch,'A')==0);capacity_before=dispatch;assert(lgd_space(&dispatch)==0&&!memcmp(&dispatch,&capacity_before,sizeof dispatch));
+ assert(!dispatch.pic04.uart.uart.overrun);assert(inp(0x3f8)=='A');assert(outp(0x3fa,0x81));
+ assert(outp(0x3fc,16));assert(lgd_space(&dispatch)==0);assert(outp(0x3fc,0));
+ assert(lgd_space(&dispatch)==16);for(unsigned i=0;i<16;i++){assert(lgd_space(&dispatch)==(int)(16-i));assert(lgd_send(&dispatch,'B')==0);}
+ capacity_before=dispatch;assert(lgd_space(&dispatch)==0&&!memcmp(&dispatch,&capacity_before,sizeof dispatch));
+ dispatch.busy=true;assert(lgd_space(&dispatch)==-(int)SYLE_GUEST_EBUSY);dispatch.busy=false;
+ dispatch.entry_inflight=true;assert(lgd_space(&dispatch)==-(int)SYLE_GUEST_EBUSY);dispatch.entry_inflight=false;
+ dispatch.pic04.uart.uart.rc=17;capacity_before=dispatch;assert(lgd_space(&dispatch)==-(int)SYLE_GUEST_EBACKEND&&!memcmp(&dispatch,&capacity_before,sizeof dispatch));
+ dispatch.failed=true;assert(lgd_space(&dispatch)==-(int)SYLE_GUEST_ESTATE);
+ setup(false);assert(lgd_space(&dispatch)==-(int)SYLE_GUEST_ENOTSUP);
+
  setup04();pic_init();uart_thre();assert(dispatch.pic04.master.irr==16&&dispatch.pic04.master.level4&&!dispatch.pic04.uart.irq_dirty&&!dispatch.uart.ready);
  assert(lgd_before_entry(&dispatch,&session)&&dispatch.pic04.master.reserved.source==4&&mock.f[0x4016]==0x80000034);
  assert(lgd_send(&dispatch,'X')==-16&&lgd_recv(&dispatch)==-16);receipt(30);assert(dispatch.pic04.master.isr==16&&!dispatch.pic04.master.irr&&dispatch.pic04.master.completed.source==4);
@@ -77,5 +90,20 @@ int main(void){
  setup04();assert(lgd_before_entry(&dispatch,&session));struct lgs_entry_result uncertain={.state_result=LVS_GUEST_CAPTURE_FAILED};assert(!lgd_after_entry(&dispatch,&session,&uncertain)&&dispatch.failed); /* no ticket isn't proof of a safe outcome */
  /* Read-only progress has explicit source and once-only IRQ4 marker. */
  setup04();pic_init();uart_thre();assert(lgd_before_entry(&dispatch,&session));receipt(30);session.host.active=session.host.ready=true;session.platform.safe=safe;struct lprog_snapshot snap;struct lpd_domain saved=dispatch.pic04;assert(lprog_collect(&dispatch,&session,&snap)&&snap.receipt_source==4&&snap.irr==0&&snap.isr==16&&!memcmp(&saved,&dispatch.pic04,sizeof saved));bool sent=false;assert(!lprog_irq4_once(&sent,false)&&!sent);assert(lprog_irq4_once(&sent,true)&&sent);for(unsigned i=0;i<100;i++)assert(!lprog_irq4_once(&sent,true));
+ /* Linux oneshot control0x38: count1 produces one IRQ0 and no periodic tail. */
+ setup04();pic_init();assert(outp(0x43,0x38)&&outp(0x40,1)&&outp(0x40,0));
+ assert(dispatch.pic04.timer.mode4&&dispatch.pic04.timer.reload==1);
+ uint64_t deadline;assert(pit0_next_edge(&dispatch.pic04.timer,&deadline));
+ mock.f[0x4826]=1;assert(run(52)&&dispatch.ticks==deadline&&dispatch.pic04.master.irr==1&&dispatch.pic04_idle_reason==LPI_JUMP);
+ assert(lgd_before_entry(&dispatch,&session)&&dispatch.pic04.master.reserved.source==0);receipt(30);
+ mock.f[0x4826]=0;assert(outp(0x20,0x20)&&dispatch.pic04.master.isr==0);
+ mock.f[0x4826]=1;tick=dispatch.ticks;
+ assert(run(52)&&dispatch.ticks==tick+1&&dispatch.pic04_idle_reason==LPI_NO_TIMER&&!dispatch.pic04.master.irr);
+ for(unsigned i=0;i<20;i++)assert(run(52)&&dispatch.pic04.timer.edges==1&&!dispatch.pic04.master.irr);
+ /* Control programming publishes no mode/edge/time changes on VMWRITE failure. */
+ for(unsigned i=1;i<=4;i++){
+  setup04();pic_init();saved=dispatch.pic04;tick=dispatch.ticks;mock.failwrite=mock.writes+i;
+  assert(!outp(0x43,0x38)&&dispatch.failed&&dispatch.ticks==tick&&!memcmp(&saved,&dispatch.pic04,sizeof saved));
+ }
  puts("PIC04 combination host PASS; no VM/IRQ hardware acceptance");
 }

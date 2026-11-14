@@ -42,7 +42,7 @@ int main(void){
  for(unsigned k=0;k<12;k++){write_setup();switch(k){
  case 0:put(0x3010,0x4005);break;case 1:put(0x3010,0x4003);break;case 2:put(0x4000,0xe001);break;
  case 3:put(0x4000,UINT64_C(0x800000000000e005));break;case 4:put(0x4000,0);break;case 5:missing=14;break;
- case 6:put(0x4008,0xe007);break;case 7:g.error=7;break;case 8:g.error=4;break;case 9:g.address=UINT64_C(0x800000000000);break;
+ case 6:put(0x4008,0xe007);break;case 7:g.error=7;break;case 8:g.error=5;break;case 9:g.address=UINT64_C(0x800000000000);break;
  case 10:put(0x3010,UINT64_C(0x8000000000004007));break;case 11:g.rip=0x401000;break;
  }assert(!valid());}
  for(unsigned i=1;i<=34;i++){write_setup();failread=i;assert(!lup_inject(&state,&session)&&state.failed&&!writes&&!state.count);}

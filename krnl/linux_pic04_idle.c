@@ -11,11 +11,9 @@ bool lpi_plan(const struct lpd_domain*d,uint64_t tick,const struct lip_idle*g,ui
  else if(!d->master.initialized||d->master.phase||d->master.mask_pending||(d->master.imr&1))reason=LPI_MASKED;
  else if(!d->timer.running||!d->timer.mode)reason=LPI_NO_TIMER;
  else{
-  const struct pit0*t=&d->timer;if(t->reload<2||t->reload>65536||t->start>UINT64_MAX-t->reload)return false;
- 
-  uint64_t deadline=t->start+t->reload;if(deadline<=tick)return false;
- 
-  if(deadline-tick>65536)reason=LPI_FUTURE_START;
+  const struct pit0*t=&d->timer;uint64_t deadline;
+  if(!pit0_next_edge(t,&deadline)){if(!(t->mode4&&t->strobe_done))return false;reason=LPI_NO_TIMER;}
+  else if(deadline-tick>65536)reason=LPI_FUTURE_START;
   else {if(deadline>UINT64_MAX/1000)return false;
  next=deadline;reason=LPI_JUMP;}
  }

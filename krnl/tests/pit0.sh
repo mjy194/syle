@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pure mode-2/gate-high model only; no VM execution or runtime integration.
+# Pure mode-2/mode-4 gate-high model; no VM execution or runtime integration.
 set -eu
 cd "$(dirname "$0")/../.."
 tmp=$(mktemp -d)

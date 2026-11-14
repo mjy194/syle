@@ -52,5 +52,21 @@ struct lvh_context {
  unsigned open_stage;
 };
 bool lvh_open(struct lvh_context*,const struct lvh_ops*,const struct linux_guest_memory*,uint64_t exit_rsp,uint64_t exit_rip);
+/* Additive opt-in VMXON/VMCS allocation-site roles. Callback uses
+ * ops.memory.context; memory.allocate may be NULL. Existing lifecycle and
+ * quarantine/release requirements remain unchanged; no DMA admission implied. */
+bool lvh_open_roles(struct lvh_context*,const struct lvh_ops*,const struct linux_guest_memory*,uint64_t exit_rsp,uint64_t exit_rip,sg_allocate_role_fn);
 bool lvh_close(struct lvh_context*);
+/* Internal trusted opt-in close seam, not a caller-supplied quiescence receipt.
+ * Calls barrier only after successful VMXOFF (or when VMX was never active),
+ * before any control-page free. Barrier failure retains pages with active=false;
+ * retry repeats barrier, NOT VMX instructions. Fixed callback/context must be
+ * bound by the controller before publication and remain immutable; barrier
+ * must be idempotent (also after partial unpin/free), must not directly free
+ * pages, reenter/mutate host/session or restore CR4.
+ * Caller excludes entry, scoped mappings and async producers independently.
+ * No DMA/NMI quiescence is established by this API. Null barrier is rejected.
+ * Legacy close and automatic open-failure cleanup remain unchanged. */
+bool lvh_close_with_barrier(struct lvh_context *,bool (*)(void *),void *);
+
 #endif

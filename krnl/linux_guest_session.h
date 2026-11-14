@@ -56,5 +56,23 @@ struct lgs_session {
  * buffers, validated ops and aligned resident fallback stack/RIP. No hardware. */
 bool lgs_configure(struct lgs_session *,const struct lvh_ops *,const struct lvs_ops *,
  const struct lgs_platform *,const void *,size_t,const void *,size_t,const char *,uint64_t,uint64_t);
+/* Trusted integration seam, not a user-controlled capability. The caller must
+ * keep callbacks and allocation context immutable for the entire session.
+ * Separate from existing structs so legacy layout and linkage stay unchanged. */
+struct lgs_prepare_path {
+ sg_allocate_role_fn allocate_role;
+ bool (*memory)(struct linux_guest_memory *,const struct sg_memory_ops *,
+  sg_allocate_role_fn,const void *,size_t,const void *,size_t,const char *);
+ bool (*host)(struct lvh_context *,const struct lvh_ops *,const struct linux_guest_memory *,
+  uint64_t,uint64_t,sg_allocate_role_fn);
+};
+int lgs_prepare_with_path(struct lgs_session *,uint64_t,const struct lgs_prepare_path *);
+/* Trusted fixed close path, installed only by an opt-in controller adapter.
+ * No public quiescence receipt; immutable context, no callback reentry. */
+struct lgs_release_path {
+ bool (*close)(struct lvh_context *,void *);
+ void *context;
+};
+int lgs_release_with_path(struct lgs_session *,const struct lgs_release_path *);
 extern const struct guest_backend lgs_guest_backend;
 #endif

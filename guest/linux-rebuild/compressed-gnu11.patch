@@ -1,0 +1,5 @@
+--- a/arch/x86/boot/compressed/Makefile
++++ b/arch/x86/boot/compressed/Makefile
+@@ -27,1 +27,1 @@
+-KBUILD_CFLAGS := -m$(BITS) -O2 $(CLANG_FLAGS)
++KBUILD_CFLAGS := -m$(BITS) -O2 $(CLANG_FLAGS) -std=gnu11

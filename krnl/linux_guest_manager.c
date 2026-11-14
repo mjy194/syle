@@ -130,7 +130,7 @@ static int start(void*c){
  #ifdef MG_PROGRESS_DIAG
  linux_guest_progress_probe(g,false,false);
  #endif
- int r=lgs_guest_backend.start(c);
+ int r=platform.service.clock_start&&!platform.service.clock_start(platform.service.ctx)?1:lgs_guest_backend.start(c);
  #ifdef MG_PROGRESS_DIAG
  linux_guest_progress_probe(g,true,r==0);
  #endif
@@ -154,14 +154,15 @@ static int start(void*c){
  }
  leave_context(&saved);return r;
 }
-static int stop(void*c){struct mhc_saved s=enter_context();int r=lgs_guest_backend.stop(c);leave_context(&s);return r;}
+static int stop(void*c){struct mhc_saved s=enter_context();int r=lgs_guest_backend.stop(c);if(!r&&platform.service.clock_stop&&!platform.service.clock_stop(platform.service.ctx))r=1;leave_context(&s);return r;}
 static int release(void*c){struct mhc_saved s=enter_context();int r=lgs_guest_backend.release(c);leave_context(&s);return r;}
 static int send(void*c,uint8_t b){(void)c;return platform.service.send?platform.service.send(platform.service.ctx,b):-(int)SYLE_GUEST_ENOTSUP;}
 static int recv(void*c){(void)c;return platform.service.recv?platform.service.recv(platform.service.ctx):-(int)SYLE_GUEST_ENOTSUP;}
-static const struct guest_backend guest_ops={.prepare=prepare,.start=start,.stop=stop,.release=release,.console_send=send,.console_recv=recv};
+static int space(void*c){(void)c;return platform.service.space?platform.service.space(platform.service.ctx):-(int)SYLE_GUEST_ENOTSUP;}
+static const struct guest_backend guest_ops={.prepare=prepare,.start=start,.stop=stop,.release=release,.console_send=send,.console_recv=recv,.console_space=space};
 bool linux_guest_manager_install(const struct lgm_service_ops *service) {
  if(platform.installed||!service||!service->reset||!service->dispatch||
-    (!service->before_entry!=!service->after_entry)||!lvn_bind(&session.native,&session.sop)||
+    (!service->before_entry!=!service->after_entry)||(!service->clock_start!=!service->clock_stop)||!lvn_bind(&session.native,&session.sop)||
     !lvb_bind(&backend,&memory_ops,&session.hop))return false;
  platform.service=*service;
  struct lgs_platform ops={.enable=enable,.disable=disable,.safe=safe,

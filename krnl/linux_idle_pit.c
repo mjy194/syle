@@ -5,11 +5,11 @@ bool lip_plan(const struct pt0*p,uint64_t tick,const struct lip_idle*g,uint64_t*
  uint64_t next=tick+1;
  const struct pit0*t=&p->timer;const struct pic0*c=&p->pic;
  if(g->activity==1&&(g->flags&512)&&!g->blocking&&t->running&&t->mode&&c->initialized&&!c->phase&&!c->mask_pending&&!(c->imr&1)&&!c->irr&&!c->isr&&!c->reserved){
-  if(t->reload<2||t->reload>65536||t->start>UINT64_MAX-t->reload)return false;
-  uint64_t deadline=t->start+t->reload;
-  if(deadline<=tick)return false;
-  uint64_t delta=deadline-tick;
-  if(delta<=65536){if(deadline>UINT64_MAX/1000)return false;next=deadline;}
+  uint64_t deadline;
+  if(pit0_next_edge(t,&deadline)){
+   uint64_t delta=deadline-tick;
+   if(delta<=65536){if(deadline>UINT64_MAX/1000)return false;next=deadline;}
+  }else if(!(t->mode4&&t->strobe_done))return false;
  }
  *out=next;return true;
 }

@@ -43,7 +43,53 @@ static void high(void){
  put(0x16cf508,0xf300000000000000ull);put(0x16cf510,0xa5);put(0x1736000,0);put(0x1634010,0);put(0x1634018,0x80000000000000e3ull);
  dispatch.pf=(struct lpfg_state){4,15,false,true};
 }
+static void user_exits(void){
+ /* These exits are permitted at CPL3 without bypassing event ownership. */
+ setup(false);mock.f[0x0802]=0x33;uint64_t rip=mock.f[0x681e];
+ assert(run(52)&&mock.f[0x681e]==rip&&dispatch.ticks==1);
+ setup(false);mock.f[0x0802]=0x33;session.native.gpr[0]=1;
+ assert(run(10)&&mock.f[0x681e]==0x10002&&dispatch.microcode.loaded);
+ setup(false);mock.f[0x0802]=0x33;
+ assert(run(16)&&mock.f[0x681e]==0x10002&&session.native.gpr[0]==1000);
+ /* TSD is guest policy, not permission to manufacture a successful RDTSC. */
+ setup(false);mock.f[0x0802]=0x33;mock.f[0x6804]|=4;
+ assert(!run(16)&&dispatch.failed&&!mock.writes&&!dispatch.ticks);
+ setup(false);mock.f[0x0802]=0x33;mock.failread=8;
+ assert(!run(16)&&!mock.writes&&!dispatch.ticks);
+ const unsigned privileged[]={12,14,28,29,30,31,32,40,48};
+ for(unsigned i=0;i<sizeof privileged/sizeof privileged[0];i++){
+  setup(false);mock.f[0x0802]=0x33;
+  assert(!run(privileged[i])&&!mock.writes&&!dispatch.ticks);
+ }
+ for(unsigned cpl=1;cpl<=2;cpl++)for(unsigned reason=0;reason<53;reason++){
+  setup(false);mock.f[0x0802]=0x30|cpl;assert(!run(reason)&&!mock.writes);
+ }
+ for(unsigned reason=10;reason<=52;reason+=reason==10?6:36){
+  setup(false);mock.f[0x0802]=0x33;mock.f[0x4408]=0x80000b0e;
+  assert(!run(reason)&&!mock.writes&&!dispatch.ticks);
+  setup(false);mock.f[0x0802]=0x33;mock.f[0x4016]=0x80000b0e;
+  assert(!run(reason)&&!mock.writes&&!dispatch.ticks);
+ }
+ /* A pending demand-PF still refuses timer receipts: no accidental broadening. */
+ setup(false);mock.f[0x0802]=0x33;dispatch.demand_pf.count=1;
+ dispatch.demand_pf.pending=true;mock.f[0x4016]=0x80000b0e;
+ assert(!run(52)&&dispatch.demand_pf.pending&&!mock.writes&&dispatch.diagnostic_stage==LGD_STAGE_RECEIPT);
+ for(unsigned reason=10;reason<=16;reason+=6)for(unsigned fail=1;fail<=4;fail++){
+  setup(false);mock.f[0x0802]=0x33;session.native.gpr[0]=1;
+  uint64_t regs[15];memcpy(regs,session.native.gpr,sizeof regs);mock.failwrite=fail;
+  assert(!run(reason)&&dispatch.failed&&!dispatch.ticks&&!memcmp(regs,session.native.gpr,sizeof regs));
+ }
+ /* Interrupt-window is not a privileged instruction; the existing window
+  * checks still require IF, control bit, no blocking, no active event. */
+ setup(false);mock.f[0x0802]=0x33;dispatch.config.legacy_pic_enabled=true;
+ dispatch.legacy_initialized=true;dispatch.legacy.must_one=0;
+ dispatch.legacy.allowed_one=UINT32_MAX;assert(pt0_init(&dispatch.legacy.timer,1));
+ dispatch.ports.master=&dispatch.legacy.timer.pic;
+ mock.f[0x4002]=0x80000004;mock.f[0x6820]=512;
+ assert(run(7)&&mock.f[0x681e]==0x10000&&mock.f[0x4002]==0x80000000);
+}
 int main(void){
+ user_exits();
  setup(false);assert(lgd_before_entry(&dispatch,&session)&&dispatch.entry_inflight);assert(!lgd_reset(&dispatch)&&lgd_send(&dispatch,1)==-16&&!run(52));
  struct lgs_entry_result receipt={.state_result=LVS_EXIT,.fields_valid=true,.reason=52};
  assert(lgd_after_entry(&dispatch,&session,&receipt)&&!dispatch.entry_inflight);assert(run(52));assert(!lgd_after_entry(&dispatch,&session,&receipt));
@@ -77,7 +123,7 @@ int main(void){
  for(unsigned i=1;i<=4;i++){setup(false);session.native.gpr[0]=1;uint64_t g[15];memcpy(g,session.native.gpr,sizeof g);mock.failwrite=i;assert(!run(10)&&dispatch.failed&&!memcmp(g,session.native.gpr,sizeof g));}
  for(unsigned i=1;i<=7;i++){setup(false);mock.failread=i;assert(!run(10)&&dispatch.failed);}
  setup(false);mock.f[0x4408]=0x8000030e;assert(!run(52)&&!mock.writes);
- setup(false);mock.f[0x0802]=3;assert(!run(52));
+ setup(false);mock.f[0x0802]=3;assert(run(52)&&mock.f[0x681e]==0x10000);
  setup(false);mock.f[0x681e]=0x800000000000ull;assert(!run(52));
  setup(false);session.state.host_dirty=true;assert(!run(52)&&!mock.reads);
  setup(false);mock.f[0x440c]=3;mock.f[0x6400]=0x13;assert(run(28)&&session.native.gpr[0]==0x1000&&mock.f[0x681e]==0x10003);

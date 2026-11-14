@@ -1,0 +1,31 @@
+{
+  "outcome": "offline-replay-matches",
+  "tables": 265,
+  "pmemsave_count": 840,
+  "cr0": "0x80010033",
+  "cr3": "0x4436000",
+  "cr4": "0x2668",
+  "efer": "0xd00",
+  "physical_bound": 70368744177664,
+  "sources": {
+    "kernel": {
+      "length": 984064,
+      "sha256": "3d1c081c18e64ad97a44e2b038b8b3d0c733d38494b6293ba2402898c3a629e6",
+      "reachable_aliases": 241,
+      "writable_alias_observed": false
+    },
+    "initrd": {
+      "length": 1332736,
+      "sha256": "3a3d60206c77881f87f5c10fc5433d09b8302e134058bc10a40f871fd4fdcf39",
+      "reachable_aliases": 327,
+      "writable_alias_observed": false
+    },
+    "command": {
+      "length": 74,
+      "sha256": "f6b42c8a1eb3cfbc080174267b380ee8288b0c47943d94a72cc638f41d0460c4",
+      "reachable_aliases": 1,
+      "writable_alias_observed": false
+    }
+  },
+  "scope": "single stopped current Syle CR3 only; not EPT, other roots, dynamic lifetime or DMA"
+}

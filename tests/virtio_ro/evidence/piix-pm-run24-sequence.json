@@ -1,0 +1,63 @@
+{
+  "serial_sha256": "d1d5364f801c4898863aece5f03526fa63594df9f9b2db95ab6c3032573e8f4c",
+  "cycles": 308,
+  "timer_reads_verified": 28,
+  "command04_samples": 0,
+  "first_of_each_kind": [
+    {
+      "index": 2,
+      "kind": "hostbridge_did",
+      "width": 2,
+      "value": "0x1237",
+      "accepted": 1,
+      "pmba": "0x1",
+      "enabled": 0
+    },
+    {
+      "index": 6,
+      "kind": "pm_enable_read",
+      "width": 1,
+      "value": "0x0",
+      "accepted": 1,
+      "pmba": "0x1",
+      "enabled": 0
+    },
+    {
+      "index": 10,
+      "kind": "pmba_read",
+      "width": 4,
+      "value": "0x1",
+      "accepted": 1,
+      "pmba": "0x1",
+      "enabled": 0
+    },
+    {
+      "index": 11,
+      "kind": "pmba_write",
+      "width": 4,
+      "value": "0xb001",
+      "accepted": 1,
+      "pmba": "0xb001",
+      "enabled": 0
+    },
+    {
+      "index": 16,
+      "kind": "pm_enable_write",
+      "width": 1,
+      "value": "0x1",
+      "accepted": 1,
+      "pmba": "0xb001",
+      "enabled": 1
+    },
+    {
+      "index": 30,
+      "kind": "timer_read",
+      "width": 4,
+      "value": "0x5d4a4b",
+      "accepted": 1,
+      "pmba": "0xb001",
+      "enabled": 1
+    }
+  ],
+  "scope": "logged pinned-firmware observed IO only; source interpretation does not identify loaded module or prove caching/absence of unlogged accesses"
+}

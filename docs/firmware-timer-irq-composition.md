@@ -1,0 +1,16 @@
+# Timer/IRQ transaction composition, host-only
+
+Actual KVM LVT evidence now confirms ESI=0x20005: periodic, unmasked, vector 5; old LVT=0x10000, initial=0, armed=0. This is idle register setup, not an interrupt or a running countdown. The experiment below deliberately uses legal profile vector 0x45. It does not make vector 5 delivery safe and cannot yet satisfy the subsequent OVMF initial-count write.
+
+Use exactly one authoritative `guest_apic.timer`, not simultaneous firmware stage and guest-APIC clocks. The host staging/session prototypes establish boundary semantics; this composition tests the existing whole-APIC ownership transaction instead of adding duplicate counters. Required future wrapper lifecycle is persistent and cannot be rolled back with staged hardware/device state.
+
+1. With exclusive BSP/device ownership, verify clock domain, monotonic sample, active APIC, supported vector and no previous terminal state.
+2. Poll a staged whole APIC. For masked expiry, retain phase without replay. For unmasked expiry, atomically transfer ownership to local-edge IRR. If software APIC is disabled or enqueue fails, retain the original timer/event and stop. Generic `gia_poll` alone is insufficient for this stronger disabled-APIC policy: its underlying model can consume such an expiry without enqueue.
+3. IF, interruptibility, priority or another entry event may defer injection. IRR retains ownership. Arrange a verified deadline wakeup; polling only on incidental exits is insufficient.
+4. `gia_reserve` freezes the whole APIC/IOAPIC domain and identifies a generation token. No timer poll or device mutation is permitted while reserved. `lgig_before` stages VMCS entry metadata valid-last.
+5. Definite no-entry plus successful VMCS cleanup permits cancellation, never consumption. Original start fails. An explicitly new attempt can reserve the same IRR again. A real-exit receipt accepted by the existing narrow proof moves IRR to ISR only after VMCS cleanup.
+6. Unknown outcome, vectoring ambiguity or any VMCS failure permanently forbids reentry and preserves reservation/event ownership for teardown. Never retry a guest entry based only on a set valid bit.
+
+Same-vector periodic events coalesce in IRR as the existing APIC model specifies; the number of elapsed expirations is reported for that successful poll in last_expirations, not accumulated across polls (a later same-time poll can reset it to zero). This is not an arbitrary software queue or an assertion that every timer period gets a distinct interrupt. Level-vs-edge collision is rejected rather than changing ownership silently.
+
+`sh krnl/tests/firmware_timer_irq_composition.sh` runs independent ASan/UBSan tests against existing modules: periodic multi-expiry/phase, repeat-sample idempotence, IF defer, local-edge reserve, frozen poll, definite no-entry cancellation, explicit retry, receipt acceptance, pending edge while ISR exists, software-disabled APIC rejection, each staging write failure and unknown outcome. No default or firmware observer code is changed. Native clock admission, scheduling, xAPIC register transactions and vector-5 illegal-delivery/error semantics remain unresolved integration requirements.

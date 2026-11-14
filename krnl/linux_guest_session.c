@@ -1,4 +1,8 @@
 #include "linux_guest_session.h"
+#include "linux_clock_slice.h"
+#ifdef SYLE_CLOCK_DIAGNOSTIC
+#include "linux_clock_diag.h"
+#endif
 static void host_safe(struct lgs_session *s) {
  if(s->state.host_dirty || !s->platform.safe(s->platform.ctx)) {
   s->platform.fatal(s->platform.ctx);
@@ -14,15 +18,19 @@ bool lgs_configure(struct lgs_session*s,const struct lvh_ops*h,const struct lvs_
  s->hop=*h;s->sop=*v;s->platform=*p;s->kernel=k;s->kernel_size=ks;s->initrd=i;s->initrd_size=is;
  s->command_line=c;s->fallback_rsp=rsp;s->fallback_rip=rip;s->configured=true;return true;
 }
-static int prepare(void*ctx,uint64_t profile) {
- struct lgs_session*s=ctx;
+static int prepare_impl(struct lgs_session*s,uint64_t profile,const struct lgs_prepare_path *path) {
  s->prepare_stage=1;
+#ifdef SYLE_CLOCK_DIAGNOSTIC
+ lcd_reset();
+#endif
  if(!s->configured||profile!=SYLE_GUEST_BOOT_PROFILE||s->prepared||s->enabled||s->failed)return 1;
  s->host.open_stage=0;
  s->prepare_stage=2;
  if(!lvs_init(&s->state))return 1;
  s->prepare_stage=3;
- if(!lgm_prepare(&s->memory,&s->hop.memory,s->kernel,s->kernel_size,s->initrd,s->initrd_size,s->command_line))return 1;
+ bool memory_ok=path ? path->memory(&s->memory,&s->hop.memory,path->allocate_role,s->kernel,s->kernel_size,s->initrd,s->initrd_size,s->command_line)
+ : lgm_prepare(&s->memory,&s->hop.memory,s->kernel,s->kernel_size,s->initrd,s->initrd_size,s->command_line);
+ if(!memory_ok)return 1;
  /* Fresh CREATE identity before optional owned-RAM installation; no VMX yet. */
  s->native.resume=0;s->native.cr2=0;s->exits=0;s->last_reason=0;
  if(s->platform.prepare_guest){
@@ -33,14 +41,23 @@ static int prepare(void*ctx,uint64_t profile) {
  if(!s->platform.enable(s->platform.ctx))return 1;
  s->enabled=true;
  s->prepare_stage=5;
- if(!lvh_open(&s->host,&s->hop,&s->memory,s->fallback_rsp,s->fallback_rip)) {host_safe(s);return 1;}
+ bool host_ok=path ? path->host(&s->host,&s->hop,&s->memory,s->fallback_rsp,s->fallback_rip,path->allocate_role)
+ : lvh_open(&s->host,&s->hop,&s->memory,s->fallback_rsp,s->fallback_rip);
+ if(!host_ok) {host_safe(s);return 1;}
  s->prepare_stage=6;
  if(!s->hop.invept(s->hop.context,s->memory.eptp)) {host_safe(s);return 1;}
  s->prepare_stage=7;
- if(s->host.caps.timer_shift>28) {host_safe(s);return 1;}
+ if(s->host.caps.timer_shift>LGS_PREEMPT_BITS) {host_safe(s);return 1;}
  for(unsigned j=0;j<15;j++)s->native.gpr[j]=s->host.plan.gpr[j];
  s->native.cr2=0;s->native.resume=0;s->exits=0;s->last_reason=0;s->prepared=true;s->prepare_stage=8;
  host_safe(s);return 0;
+}
+static int prepare(void *ctx,uint64_t profile) { return prepare_impl(ctx,profile,0); }
+int lgs_prepare_with_path(struct lgs_session *s,uint64_t profile,const struct lgs_prepare_path *p) {
+ if(!s||!p||!p->allocate_role||!p->memory||!p->host)return 1;
+ /* Copy once before callbacks. Trusted code must exclude reentry/mutation. */
+ const struct lgs_prepare_path path=*p;
+ return prepare_impl(s,profile,&path);
 }
 static int start(void*ctx) {
  struct lgs_session*s=ctx;
@@ -50,10 +67,13 @@ static int start(void*ctx) {
  /* Mandatory preemption timer in lvp_prepare bounds even a non-exiting guest.
   * One entry per call; retain VMCS launch state and all guest fields in place. */
  s->step_stage=2;
- if(!s->hop.vmwrite(s->hop.context,0x482e,UINT64_C(1)<<(28-s->host.caps.timer_shift)))goto fail;
+ if(!s->hop.vmwrite(s->hop.context,0x482e,UINT64_C(1)<<(LGS_PREEMPT_BITS-s->host.caps.timer_shift)))goto fail;
  s->step_stage=3;
  if(s->platform.before_entry&&!s->platform.before_entry(s->platform.ctx,s))goto fail;
  s->step_stage=4;
+ #ifdef SYLE_CLOCK_DIAGNOSTIC
+ uint64_t clock_entry_tsc=lcd_tsc();
+#endif
  enum lvs_result r=lvs_run(&s->state,&s->sop);
  host_safe(s);s->step_result=(unsigned)r;s->step_stage=5;
  struct lgs_entry_result result={.state_result=r};
@@ -70,6 +90,9 @@ static int start(void*ctx) {
  s->step_stage=7;
  if(r!=LVS_EXIT||!result.fields_valid||reason>UINT16_MAX||(vectoring&(UINT64_C(1)<<31)))goto fail;
  s->last_reason=reason;++s->exits;
+#ifdef SYLE_CLOCK_DIAGNOSTIC
+ lcd_exit(reason,lcd_tsc()-clock_entry_tsc);
+#endif
  /* Preemption exits preserve guest RIP and activity. Other exits require an
   * explicit emulator; never reinterpret an unhandled exit as successful boot. */
  s->step_stage=8;
@@ -85,10 +108,12 @@ static int stop(void*ctx) {
   * quiesced the CPU. Preserve VMCS rather than restarting the initial guest. */
  host_safe(s);return 0;
 }
-static int release(void*ctx) {
- struct lgs_session*s=ctx;
+static int release_impl(struct lgs_session*s,const struct lgs_release_path *path) {
  host_safe(s);
- if(!lvh_close(&s->host))return 1;
+ if(!(path?path->close(&s->host,path->context):lvh_close(&s->host)))return 1;
+#ifdef SYLE_CLOCK_DIAGNOSTIC
+ lcd_report();
+#endif
  if(s->enabled) {
   if(!s->platform.disable(s->platform.ctx)) {s->platform.fatal(s->platform.ctx);for(;;){}}
   s->enabled=false;
@@ -99,5 +124,11 @@ static int release(void*ctx) {
  s->state=(struct lvs_state){0};
  /* native bind stays resident; fresh create resets mutable guest state only. */
  return 0;
+}
+static int release(void *ctx){return release_impl(ctx,0);}
+int lgs_release_with_path(struct lgs_session *s,const struct lgs_release_path *p){
+ if(!s||!p||!p->close)return 1;
+ const struct lgs_release_path path=*p;
+ return release_impl(s,&path);
 }
 const struct guest_backend lgs_guest_backend={.prepare=prepare,.start=start,.stop=stop,.release=release};

@@ -33,6 +33,12 @@ __attribute__((noreturn)) void syle_main(const struct syle_boot_info *boot) {
     if (!probe || !pmm_free_page(probe) || pmm_free_page(probe))
         panic("PMM ALLOC/FREE SELFTEST FAILED");
     paging_init(boot);
+#ifdef SYLE_FIRMWARE_PROBE
+    extern bool firmware_probe_run(void);
+    bool firmware_ok = firmware_probe_run();
+    __asm__ volatile("outl %0,%1" : : "a"(firmware_ok ? 0x10u : 0x11u), "Nd"((UINT16)0xf4));
+    for (;;) __asm__ volatile("cli; hlt");
+#endif
 #if defined(LINUX_FIRST_EXIT_RECOVERY) || defined(LINUX_CR_RECOVERY) || defined(LINUX_PF_RECOVERY)
 #if defined(LINUX_PF_RECOVERY)
     extern bool linux_recovery_pf_probe(void);

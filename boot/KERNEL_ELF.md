@@ -5,7 +5,7 @@
 `syle_kernel_elf_load`；仅在成功后才允许 ExitBootServices 并跳转入口。
 
 - ELF64、小端、x86-64、ET_EXEC；不支持重定位或动态链接。
-- 文件上限 4 MiB，最多 16 个 program headers。
+- 文件上限 5 MiB（容纳固定 4 MiB guest 固件及 ELF 开销），最多 16 个 program headers。
 - PT_LOAD 的虚拟地址和物理地址必须一致，保留范围以 64 MiB 为基址，页对齐跨度
   不超过 8 MiB；全部段位于此范围。
 - PT_LOAD 权限只接受 R、RX、RW；禁止 W+X，也禁止段共享同一物理页。

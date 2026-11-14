@@ -23,6 +23,8 @@ struct guest_backend {
      * negative ABI error (EBUSY for full/empty). Never host port passthrough. */
     int (*console_send)(void *context, uint8_t byte);
     int (*console_recv)(void *context);
+    /* Pure RX capacity, 0..16 or negative ABI error. No queue/IRQ effects. */
+    int (*console_space)(void *context);
 };
 struct guest_control {
     struct guest_backend backend;

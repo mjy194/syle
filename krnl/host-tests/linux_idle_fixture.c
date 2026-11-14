@@ -77,7 +77,7 @@ int main(void){
  for(unsigned i=1;i<=4;i++){setup(false);session.native.gpr[0]=1;uint64_t g[15];memcpy(g,session.native.gpr,sizeof g);mock.failwrite=i;assert(!run(10)&&dispatch.failed&&!memcmp(g,session.native.gpr,sizeof g));}
  for(unsigned i=1;i<=7;i++){setup(false);mock.failread=i;assert(!run(10)&&dispatch.failed);}
  setup(false);mock.f[0x4408]=0x8000030e;assert(!run(52)&&!mock.writes);
- setup(false);mock.f[0x0802]=3;assert(!run(52));
+ setup(false);mock.f[0x0802]=3;assert(run(52));
  setup(false);mock.f[0x681e]=0x800000000000ull;assert(!run(52));
  setup(false);session.state.host_dirty=true;assert(!run(52)&&!mock.reads);
  setup(false);mock.f[0x440c]=3;mock.f[0x6400]=0x13;assert(run(28)&&session.native.gpr[0]==0x1000&&mock.f[0x681e]==0x10003);

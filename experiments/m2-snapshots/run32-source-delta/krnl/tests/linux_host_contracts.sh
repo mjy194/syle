@@ -1,0 +1,121 @@
+#!/bin/sh
+# Host-only contracts. No VM, guest, QEMU or firmware execution.
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$root"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+CC=${CC:-cc}
+export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0}
+run() {
+ name=$1; shift
+ "$CC" -std=c11 -Ikrnl -Wall -Wextra -Werror -fsanitize=address,undefined -g "$@" -o "$tmp/$name"
+ "$tmp/$name"
+}
+for n in linux_boot linux_boot_reservations linux_boot_tss linux_guest_memory linux_vcpu_host linux_vcpu_host_alias linux_vcpu_prepare; do sh "krnl/tests/$n.sh"; done
+for n in linux_high_pf_data linux_high_pf linux_efer_commit linux_pt_diag; do run "$n" "krnl/tests/$n.c" "krnl/$n.c"; done
+run uart krnl/tests/linux_uart_io.c krnl/linux_uart_io.c krnl/guest_uart.c
+run cpu krnl/tests/linux_cpu_commit.c krnl/linux_cpu_commit.c krnl/linux_vcpu_policy.c
+run gs krnl/tests/linux_gs_commit.c krnl/linux_gs_commit.c krnl/linux_vcpu_msr.c
+for n in linux_pf_guard linux_pf_guard_v5; do run "$n" "krnl/tests/$n.c" "krnl/$n.c" krnl/linux_vcpu_event.c; done
+run permissions krnl/tests/linux_pt_permissions.c krnl/linux_pt_permissions.c krnl/linux_pt_diag.c
+for n in linux_vcpu_policy linux_vcpu_event linux_vcpu_msr; do run "$n" "host-tests/$n.c" "krnl/$n.c"; done
+run cr host-tests/linux_vcpu_cr.c krnl/linux_vcpu_cr.c krnl/linux_vcpu_policy.c
+run state krnl/host-tests/linux_vcpu_state.c krnl/linux_vcpu_state.c
+run backend -DLVB_HOST_TEST krnl/host-tests/linux_vcpu_backend.c krnl/linux_vcpu_backend.c
+run msr-bank krnl/host-tests/linux_msr_bank.c krnl/linux_msr_bank.c krnl/linux_vcpu_state.c
+run uart-model krnl/tests/linux_uart.c krnl/linux_uart.c
+run uart-model-io krnl/tests/linux_uart_model_io.c krnl/linux_uart_model_io.c krnl/linux_uart.c
+run uart-runtime krnl/tests/linux_uart_runtime.c krnl/linux_uart_runtime.c krnl/linux_uart_model_io.c krnl/linux_uart.c
+run external-irq krnl/tests/linux_external_irq.c krnl/linux_external_irq.c
+run irq-adapter krnl/tests/linux_irq_adapter.c krnl/linux_irq_adapter.c krnl/lapic.c krnl/ioapic.c krnl/linux_external_irq.c
+run acpi-topology krnl/tests/linux_acpi_topology.c krnl/linux_acpi_topology.c
+run acpi-install krnl/tests/linux_acpi_install.c krnl/linux_acpi_install.c krnl/linux_acpi_topology.c
+sh krnl/tests/guest_apic.sh
+sh krnl/tests/linux_apic_msr.sh
+run guest-irq-adapter krnl/tests/linux_guest_irq_adapter.c krnl/linux_guest_irq_adapter.c krnl/guest_apic.c krnl/lapic.c krnl/lapic_timer.c krnl/ioapic.c
+sh krnl/tests/guest_mmio_mov.sh
+sh krnl/tests/linux_mmio_memory.sh
+SOURCE="$root" APIC_DEPS="$root/krnl" IOAPIC_DEPS="$root/krnl" OUTPUT="$tmp/apic-irq-combo" sh krnl/tests/run_linux_apic_irq_combo.sh
+sh krnl/tests/linux_apic_mmio.sh
+sh krnl/tests/linux_apic_dispatch.sh
+sh krnl/tests/linux_guest_irq_glue.sh
+sh krnl/tests/linux_cpu_profile.sh
+run acpi-reduced krnl/tests/linux_acpi_reduced.c krnl/linux_acpi_reduced.c krnl/linux_acpi_topology.c
+run acpi-reduced-install krnl/tests/linux_acpi_reduced_install.c krnl/linux_acpi_reduced_install.c krnl/linux_acpi_reduced.c krnl/linux_acpi_topology.c
+sh krnl/tests/linux_profile_gate.sh
+sh krnl/tests/linux_profile_activation.sh
+sh krnl/tests/linux_profile_prepare.sh
+sh krnl/tests/linux_profile_service.sh
+sh krnl/tests/linux_pf_diagnostic.sh
+sh krnl/tests/managed_host_context.sh
+sh krnl/tests/linux_profile_lifecycle.sh
+sh krnl/tests/linux_nonpresent_pf.sh
+sh krnl/tests/linux_nonpresent_dispatch.sh
+sh krnl/tests/linux_pit2.sh
+sh krnl/tests/pit0.sh
+sh krnl/tests/pic0.sh
+sh krnl/tests/pic0_glue.sh
+sh krnl/tests/guest_wait.sh
+sh krnl/tests/linux_clock_dispatch.sh
+sh krnl/tests/linux_disabled_apic.sh
+sh krnl/tests/linux_disabled_apic_dispatch.sh
+sh krnl/tests/linux_invlpg_dispatch.sh
+sh krnl/tests/linux_sysenter_dispatch.sh
+sh krnl/tests/linux_debug_disabled_dispatch.sh
+sh krnl/tests/linux_pic_mask_dispatch.sh
+sh krnl/tests/linux_pic_init_dispatch.sh
+sh krnl/tests/linux_pause_dispatch.sh
+sh krnl/tests/linux_rtc_dispatch.sh
+# Native harness uses CPL3 refusal/fixup and user FX state only. Do not apply
+# sanitizer instrumentation across the intentional FX-state exchange.
+"$CC" -std=c11 -Ikrnl -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -fno-pie -no-pie krnl/host-tests/linux_vcpu_native.c krnl/host-tests/linux_vcpu_native_fx.S krnl/linux_vcpu_native.c krnl/linux_vcpu_native.S krnl/linux_vcpu_state.c -o "$tmp/native"
+"$tmp/native"
+python3 krnl/tests/linux_cpu_v8_budget.py
+printf '%s\n' 'PASS host contracts only; Linux boot and VM execution not tested'
+
+sh krnl/tests/pic0_ports.sh
+sh krnl/tests/pit0_transaction.sh
+sh krnl/tests/legacy_irq_runtime.sh
+sh krnl/tests/linux_legacy_dispatch.sh
+
+sh krnl/tests/linux_port80.sh
+sh krnl/tests/linux_port80_dispatch.sh
+
+sh krnl/tests/linux_feature_control_dispatch.sh
+
+sh krnl/tests/linux_misc_features_dispatch.sh
+
+sh krnl/tests/linux_msr_gp_dispatch.sh
+
+sh krnl/tests/linux_int3_dispatch.sh
+
+sh krnl/tests/linux_progress_diag.sh
+
+sh krnl/tests/linux_idle_dispatch.sh
+
+sh krnl/tests/linux_uart_lcr_semantics.sh
+sh krnl/tests/linux_uart_lcr_audit.sh
+
+sh krnl/tests/linux_i8042_dispatch.sh
+
+sh krnl/tests/pic_master_04.sh
+
+sh krnl/tests/pic_master_04_glue.sh
+
+sh krnl/tests/linux_pic04_integration.sh
+
+sh krnl/tests/linux_cpl3_pf_diagnostic.sh
+
+sh krnl/tests/linux_user_pf.sh
+
+# Runtime profile and deterministic shell-frontend contracts (host only).
+sh krnl/tests/linux_native_pf.sh
+sh krnl/tests/linux_native_pf_dispatch.sh
+sh krnl/tests/linux_pic04_uart_clock.sh
+sh user/mgmt/tests/guest_continuous.sh
+sh user/mgmt/tests/guest_shell_probe.sh
+sh krnl/tests/host_uart_input.sh
+sh user/mgmt/tests/guest_terminal.sh
+
+sh krnl/tests/host_console.sh

@@ -44,6 +44,15 @@ static void serial_putc(char c) {
     }
     uart_present = 0; /* One exhausted polling budget disables the channel. */
 }
+#ifdef SYLE_HOST_UART_INPUT
+#include "host_uart_input.h"
+static uint8_t host_uart_read8(void *ctx,uint16_t port) {
+    (void)ctx;return in8(port);
+}
+int host_console_recv(void) {
+    return host_uart_poll(uart_present!=0,0,host_uart_read8);
+}
+#endif
 static void log_char(char c) {
     if (output_mode != 2) {
         if (c == '\n') serial_putc('\r');

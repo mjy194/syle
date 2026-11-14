@@ -1,0 +1,6 @@
+Independenthostreview/fourprofilesASanUBSan PASS, originaldefault/NO_BLOBS
+.textidentical. Selector66EF/REP2/tail/GPRpreservation/unknownkeys/cursoroverflow/
+RAMpartial+RIPfail tests passed. FixedsourceBootMenuRead16zero→platformdefault
+notforce0. Actualsourcecmp,observerunchanged,streamlinkuniquefqbootmenuobject,
+doublemacroonlyquiet. ELF4976936/span7630848 original loaderPASS,nm-uempty.
+NoKVMperformedforcandidate. Doesnotaddbootfiles/DMA/display/securityclaims.

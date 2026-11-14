@@ -1,0 +1,11 @@
+--- executed-compact-v2
++++ board6144
+@@ -821,7 +821,7 @@
+    log_text("OVMF.CLOCK_APIC reject=io_operand_default\n");return false;
+   }
+   uint8_t io_bytes[15];unsigned io_available=(unsigned)io_instruction_fetch(rip,io_bytes);
+-  if(enumeration_cycles++>=4096){vfb_abort(&enumeration);return false;}
++  if(enumeration_cycles++>=6144){vfb_abort(&enumeration);return false;}
+   uint64_t before=native.gpr[0];bool accepted=vfb_io(&enumeration,native.gpr,rip,(unsigned)(cs&3),q,(unsigned)len,active_apic.epoch,active_apic.reference,io_bytes,io_available,true,0,pic_write);
+   log_text("OVMF.CLOCK_APIC pci_cycle port=");log_hex(port);log_text(" q=");log_hex(q);
+   log_text(" config_address=");log_hex(enumeration.board.pci.address);log_text(" before_rax=");log_hex(before);

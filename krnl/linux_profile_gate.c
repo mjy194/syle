@@ -52,7 +52,7 @@ bool lpg_runtime(const struct lad_config*c,struct lgs_session*s){
  const uint32_t pri=(1u<<7)|(1u<<9)|(1u<<10)|(1u<<11)|(1u<<12)|(1u<<15)|(1u<<16)|(1u<<19)|(1u<<20)|(1u<<23)|(1u<<24)|(1u<<29)|(1u<<30)|(1u<<31);
  const uint32_t en=(1u<<2)|(1u<<9)|(1u<<14)|(1u<<15),ex=(1u<<2)|(1u<<9)|(15u<<18);
  if(!ctl(s,0x4000,0x49,0x5f)||!ctl(s,0x4002,pri,pri|0x0401e172u)||!eq(s,0x401e,0x42)||
-    !ctl(s,0x4012,en,en|0x11ffu)||!ctl(s,0x400c,ex,ex|0x36dffu)||!eq(s,0x4004,UINT32_MAX)||
+    !ctl(s,0x4012,en,en|0x11ffu)||!ctl(s,0x400c,ex,ex|0x36dffu)||!eq(s,0x4004,LVP_EXCEPTION_BITMAP)||
     !eq(s,0x4006,0)||!eq(s,0x4008,0)||!eq(s,0x400a,0)||!eq(s,0x6000,UINT64_MAX)||!eq(s,0x6002,UINT64_MAX)||!eq(s,0x400e,0)||!eq(s,0x4010,0)||!eq(s,0x4014,0)||
     !eq(s,0x482e,UINT64_C(1)<<(28-s->host.caps.timer_shift))||!ept(s))return false;
  return true;

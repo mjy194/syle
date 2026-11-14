@@ -108,3 +108,20 @@ sh krnl/tests/linux_pic04_integration.sh
 sh krnl/tests/linux_cpl3_pf_diagnostic.sh
 
 sh krnl/tests/linux_user_pf.sh
+
+# Runtime profile and deterministic shell-frontend contracts (host only).
+sh krnl/tests/linux_native_pf.sh
+sh krnl/tests/linux_native_pf_dispatch.sh
+sh krnl/tests/linux_pic04_uart_clock.sh
+sh user/mgmt/tests/guest_continuous.sh
+sh user/mgmt/tests/guest_shell_probe.sh
+sh krnl/tests/host_uart_input.sh
+sh user/mgmt/tests/guest_terminal.sh
+
+sh krnl/tests/host_console.sh
+
+# New M2 regression fixtures remain separate from historical input hashes.
+sh user/mgmt/tests/guest_resume_probe.sh
+sh guest/linux-baseline/test.sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/test_managed_run.py
+sh krnl/tests/linux_guest_memory_walk.sh

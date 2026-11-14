@@ -21,13 +21,13 @@ static void setup(void){
  put(0x7010,UINT64_C(0x00af9b000000ffff));put(0x7030,UINT64_C(0x00affb000000ffff));
  put(0x7040,UINT64_C(0x00008b0080000067));put(0x7048,0);put(0x8004,0xb010);put(0x8024,0xc010);
 }
-int main(void){struct lgpd_snapshot d;setup();assert(lgpd_collect(&s,&d)&&d.valid==((1ull<<LGPD_FIELDS)-1)&&reads==28&&maps<5000);
+int main(void){struct lgpd_snapshot d;setup();assert(lgpd_collect(&s,&d)&&d.valid==((1ull<<LGPD_FIELDS)-1)&&reads==LGPD_FIELDS&&maps<5000);
  assert((d.data_valid&240)==240&&d.target_csdesc==UINT64_C(0x00af9b000000ffff)&&d.csdesc==UINT64_C(0x00affb000000ffff));
  assert(d.tss_rsp0==0xb010&&d.selected_stack==0xb010&&d.selected_slot==0x8004&&d.va[10]==0xafe0&&d.va[11]==0xb00f);
  assert(d.trace[10].status==1&&d.trace[11].status==1);
  put(0x60e0,UINT64_C(0x00008e0100109000));assert(lgpd_collect(&s,&d)&&d.selected_stack==0xc010&&d.selected_slot==0x8024);
- static const uint32_t added[]={0x6808,0x4802,0x0804,0x680a,0x4804,0x4818,0x080e,0x6814,0x480e,0x4822,0x6820,0x6822};
- for(unsigned i=0;i<12;i++){setup();failfield=added[i];assert(lgpd_collect(&s,&d)&&!(d.valid&(1ull<<(16+i)))&&!d.data_valid&&!maps);}
+ static const uint32_t added[]={0x6808,0x4802,0x0804,0x680a,0x4804,0x4818,0x080e,0x6814,0x480e,0x4822,0x6820,0x6822,0x4016,0x4018,0x401a,0x4408,0x4824,0x4826};
+ for(unsigned i=0;i<sizeof added/sizeof added[0];i++){setup();failfield=added[i];assert(lgpd_collect(&s,&d)&&!(d.valid&(1ull<<(16+i)))&&!d.data_valid&&!maps);}
  setup();mapfail=true;assert(lgpd_collect(&s,&d)&&!d.data_valid);
  setup();s.memory.pages[8]=0;assert(lgpd_collect(&s,&d)&&!(d.data_valid&192));
  setup();s.memory.pages[8]=UINT64_C(1)<<52;assert(lgpd_collect(&s,&d)&&!(d.data_valid&192));

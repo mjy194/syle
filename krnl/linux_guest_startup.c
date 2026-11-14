@@ -6,6 +6,9 @@
 #if (defined(MG_LEGACY_PIC)+defined(MG_LEGACY_PIC04)+defined(MG_EXPERIMENTAL_APIC)) > 1
 #error "Legacy PIC and experimental APIC profiles are mutually exclusive"
 #endif
+#if defined(MG_NATIVE_GUEST_PF) && (!defined(MG_LEGACY_PIC04) || defined(MG_EXPERIMENTAL_APIC))
+#error "Native guest PF experiment requires the isolated PIC04 build"
+#endif
 #ifdef MG_EXPERIMENTAL_APIC
 #include "linux_profile_service.h"
 static struct lps_context profile;
@@ -13,6 +16,10 @@ static struct lps_context profile;
 static struct lgd_context dispatcher;
 #endif
 static struct lgm_service_ops service;
+#ifdef MG_HOST_CLOCK
+#include "linux_host_clock_hv.h"
+static struct lhcr_source clock_source;
+#endif
 /* Explicit ownership of logical UART level only. NOT a LAPIC injection sink.
  * Guest CPUID hides APIC; this profile is polled UART until a routed IRQ backend
  * is separately installed and verified. Do not label true as guest delivery. */
@@ -24,13 +31,19 @@ static void cpu(uint32_t leaf,uint32_t *a,uint32_t *b,uint32_t *c,uint32_t *d) {
  __asm__ volatile("cpuid":"=a"(*a),"=b"(*b),"=c"(*c),"=d"(*d):"a"(leaf),"c"(0));
 }
 bool linux_guest_startup_install(void) {
- struct lgd_config c={.max_exits=1u<<20,.fixed_input_verified=true,.sync_irq=retain_level};
+ /* Hash verification is still mandatory in both builds; only the explicit
+  * diagnostic build grants the software PF injector its fixed-image permit. */
+ struct lgd_config c={.max_exits=1u<<20,.fixed_input_verified=LVP_DIAGNOSTIC_PF,.sync_irq=retain_level};
  #ifdef MG_LEGACY_PIC
  c.legacy_pic_enabled=true;c.legacy_idle_advance=true;
  #endif
  #ifdef MG_LEGACY_PIC04
  c.legacy_pic04_enabled=true;c.legacy_idle_advance=true;c.sync_irq=0;c.irq_ctx=0;
  #endif
+ #ifdef MG_HOST_CLOCK
+ if(!linux_host_clock_native_source(&clock_source))return false;
+ c.host_clock=&clock_source;c.legacy_idle_advance=false;
+#endif
  uint32_t a,b,x,d;
  cpu(0,&c.max_basic,&c.vendor_b,&c.vendor_c,&c.vendor_d);
  cpu(0x80000000,&c.max_extended,&b,&x,&d);
@@ -73,11 +86,15 @@ void linux_guest_progress_probe(struct lgs_session*s,bool after,bool success){
  bool due=lprog_due(&progress_gate,s->exits,after,success);
  bool marked=lprog_mark(&progress_gate,milestones);
  bool irq4=(progress_pending&8)&&!progress_irq4_sent;
- if((!due&&!marked&&!irq4)||!lprog_collect(&dispatcher,s,&v))return;
+ bool failure=after&&!success&&!progress_gate.failed_recorded;
+ if((!due&&!marked&&!irq4&&!failure)||!lprog_collect(&dispatcher,s,&v))return;
+ if(failure)progress_gate.failed_recorded=true;
  if(irq4)(void)lprog_irq4_once(&progress_irq4_sent,true);
  log_text(after?"MANAGED.PROGRESS after":"MANAGED.PROGRESS before");
  #define P(label,field) do{log_text(label);log_hex(v.field);}while(0)
+ P(" dispatch_stage=",dispatch_stage);P(" pf_pending=",pf_pending);P(" pf_count=",pf_count);P(" high_state=",high_state);P(" demand_pending=",demand_pending);P(" demand_count=",demand_count);P(" demand_failed=",demand_failed);
  P(" irq_source=",irq_source);P(" receipt_source=",receipt_source);P(" uart_level=",uart_level);P(" uart_dirty=",uart_dirty);P(" uart_edges=",uart_edges);P(" idle_reason=",idle_reason);
+ P(" uart_rx_count=",uart_rx_count);P(" uart_rx_idle=",uart_rx_idle);P(" uart_fcr=",uart_fcr);P(" uart_ier=",uart_ier);P(" uart_mcr=",uart_mcr);P(" uart_lcr=",uart_lcr);P(" uart_divisor=",uart_divisor);
  P(" exits=",exits);P(" ticks=",ticks);P(" reload=",reload);P(" count=",count);P(" edges=",edges);P(" irr=",irr);P(" isr=",isr);P(" token=",reserved);P(" lei=",phase);P(" raw_reason=",reason);P(" raw_rip=",rip);P(" stage=",stage);P(" result=",result);
  log_text(" milestones=");log_hex(milestones);log_text(" timer_valid=");log_hex(v.timer_valid);log_text(" vmcs_valid=");log_hex(v.vmcs_valid);log_text("\n");
  #undef P

@@ -1,0 +1,74 @@
+--- executed4096
++++ compact6144
+@@ -100,8 +100,8 @@
+  clock_source.sample&&clock_source.properties.verified&&clock_source.properties.invariant&&
+  clock_source.properties.hz==10000000&&virtual_tsc.cpu==clock_source.properties.cpu&&
+  virtual_tsc.epoch==clock_source.properties.epoch;}
+-#include "firmware_observer_trace.h"
+-static struct fot_trace observation_trace;
++#include "firmware_observer_compact.h"
++static struct foc_trace observation_trace;
+ static char observation_bytes[2u*1024u*1024u]; /* NOBITS: checked against8MiB loader span. */
+ static bool observation_deferred,observation_finished;
+ /* Original runtime logger has no transmission acknowledgement. This true
+@@ -113,10 +113,10 @@
+   chunk[n]=0;log_text(chunk);off+=n;}
+  return true;
+ }
+-static void observation_text(const char*s){if(observation_deferred){size_t n=0;while(s[n])n++;(void)fot_text(&observation_trace,s,n);}else log_text(s);}
+-static void observation_hex(uint64_t value){if(observation_deferred)(void)fot_hex(&observation_trace,value);else log_hex(value);}
++static void observation_text(const char*s){if(observation_deferred){size_t n=0;while(s[n])n++;(void)foc_text(&observation_trace,s,n);}else log_text(s);}
++static void observation_hex(uint64_t value){if(observation_deferred)(void)foc_hex(&observation_trace,value);else log_hex(value);}
+ static bool observation_start(void){
+- if(!fot_defer(&observation_trace))return false;
++ if(!foc_defer(&observation_trace))return false;
+  observation_deferred=true;return true;
+ }
+ static bool observation_ok(void){return observation_trace.ready&&!observation_trace.failed&&!observation_finished;}
+@@ -124,13 +124,16 @@
+  if(observation_finished)return;
+  observation_finished=true;observation_deferred=false;
+  log_text("OVMF.TRACE guest_execution_stopped_deferred_dump_begin\n");
+- (void)fot_flush(&observation_trace);
++ (void)foc_flush(&observation_trace);
+  log_text("OVMF.TRACE dump_end failed=");log_hex(observation_trace.failed);
+  log_text(" incomplete=");log_hex(observation_trace.incomplete);
+  log_text(" text_calls=");log_hex(observation_trace.text_calls);log_text(" hex_calls=");log_hex(observation_trace.hex_calls);
+- log_text(" requested_bytes=");log_hex(observation_trace.requested_bytes);log_text(" buffered_bytes=");log_hex(observation_trace.buffered_bytes);
++ log_text(" requested_bytes=");log_hex(observation_trace.requested_bytes);log_text(" accepted_logical_bytes=");log_hex(observation_trace.accepted_bytes);
+  log_text(" sink_attempted_bytes=");log_hex(observation_trace.sink_attempted_bytes);log_text(" dropped_bytes=");log_hex(observation_trace.dropped_bytes);
+- log_text(" same30s_timer_VMbudget_exitcap4096_TSC_uses_clock_sync_sample\n");
++ log_text(" encoded_bytes=");log_hex(observation_trace.encoded_bytes);
++ log_text(" dictionary_entries=");log_hex(observation_trace.dict_count);
++ log_text(" decoded_events=");log_hex(observation_trace.decoded_events);log_text(" decoded_bytes=");log_hex(observation_trace.decoded_bytes);
++ log_text(" lossless_compact_v1_same30s_timer_VMbudget_exitcap6144_no_new_clock_sample\n");
+ }
+ static void observation_fatal(void){observation_deferred=false;log_text("OVMF.TRACE unsafe_host_fatal_no_drain_guarantee\n");}
+ #define log_text observation_text
+@@ -888,7 +891,7 @@
+ }
+ bool firmware_probe_run(void){
+  bool ok=false;uint64_t reason=0;
+- if(!fot_init(&observation_trace,observation_bytes,sizeof observation_bytes,0,observation_sink))return false;
++ if(!foc_init(&observation_trace,observation_bytes,sizeof observation_bytes,0,observation_sink))return false;
+  log_text("OVMF.CACHE_KVM nondefault_single_maintenance_fixture\n");
+  log_text("OVMF.CLOCK_APIC begin NONDEFAULT timer32 IRQ experiment; host-tested ownership, native delivery unverified\n");
+  if(!lvn_bind(&native,&state_ops)){log_text("OVMF.CLOCK_APIC fail=native_bind\n");return false;}
+@@ -919,7 +922,7 @@
+     !ftsc_init(&virtual_tsc,host.vmcs_page,active_apic.epoch,active_apic.clock.timer.origin,clock_source.max_gap,clock_source.properties.cpu))goto cleanup;
+  log_text("OVMF.TSC virtual_hz=10MHz boot_origin=");log_hex(virtual_tsc.origin);log_text(" epoch=");log_hex(virtual_tsc.epoch);log_text(" cpu=");log_hex(virtual_tsc.cpu);log_text("\n");
+  unsigned observed=0;
+- for(;observed<4096;observed++){
++ for(;observed<6144;observed++){
+   /* Bounded diagnostic expansion only; same per-entry execution slice. */
+   if(!observation_ok()||!clock_sync()||active_apic.failed||!fag_valid(&active_apic.device))break;
+   if(active_apic.reference-active_apic.clock.timer.origin>=UINT64_C(300000000)){
+@@ -999,7 +1002,7 @@
+  }
+  if(safe())(void)rtc_observation("terminal_no_new_sample");
+  observation_finish();
+- if(observed==4096)log_text("OVMF.CLOCK_APIC observation_exit_budget=4096 reached\n");
++ if(observed==6144)log_text("OVMF.CLOCK_APIC observation_exit_budget=6144 reached\n");
+  log_text("OVMF.CLOCK_APIC completed_dispatches=");log_hex(observed);log_text("\n");
+  /* Observation only: never report boot success, even after the exit budget. */
+  if(!ok){uint64_t rip=0,err=0,q=0;rd(0x681e,&rip);rd(0x4400,&err);rd(0x6400,&q);log_text("OVMF.CLOCK_APIC failed reason=");log_hex(reason);log_text(" rip=");log_hex(rip);log_text(" qual=");log_hex(q);log_text(" vmerr=");log_hex(err);log_text("\n");}

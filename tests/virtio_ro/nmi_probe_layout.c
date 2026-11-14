@@ -1,0 +1,5 @@
+#include <stddef.h>
+#include <stdio.h>
+#include "../../krnl/guest_control.h"
+#include "../../krnl/linux_guest_session.h"
+int main(void){printf("session.size=%zu\nmanaged_guest.size=%zu\n",sizeof(struct lgs_session),sizeof(struct guest_control));printf("managed_guest.handle=%zu\nmanaged_guest.state=%zu\nsession.prepared=%zu\nsession.enabled=%zu\nsession.host.active=%zu\nsession.memory.pages=%zu\nsession.memory.tables=%zu\nsession.host.vmxon_page=%zu\nsession.host.vmcs_page=%zu\n",offsetof(struct guest_control,handle),offsetof(struct guest_control,state),offsetof(struct lgs_session,prepared),offsetof(struct lgs_session,enabled),offsetof(struct lgs_session,host)+offsetof(struct lvh_context,active),offsetof(struct lgs_session,memory)+offsetof(struct linux_guest_memory,pages),offsetof(struct lgs_session,memory)+offsetof(struct linux_guest_memory,tables),offsetof(struct lgs_session,host)+offsetof(struct lvh_context,vmxon_page),offsetof(struct lgs_session,host)+offsetof(struct lvh_context,vmcs_page));}

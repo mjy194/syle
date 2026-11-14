@@ -1,0 +1,5 @@
+# fw_cfg boot-menu policy, firmware default
+
+Independent FFC_BOOT_MENU_DEFAULT adds only immutable LE16{0,0} selector0e to base trace-compact-isolated. Other selectors/files/DMA rules unchanged. Fixed QemuFwCfg.h identifies BootMenu0e; matching QemuBootOrderLib.c2385–2391 selects/read16, and zero returns PcdPlatformBootTimeOut. This is firmware default timeout, NOT forced zero seconds or skipped UI. No etc/boot-menu-wait file fabricated.
+
+Scalar tests cover selector/upperRAX/reset/two-byte zero plus tail/cursor overflow/unknown/data writes/DMA. Unmodified actual fwc_apply executes66EF selection and REP INSB count2, verifying owned RAM zero bytes, RCX0/RDI+2, all other GPRs including highRAX preserved. Selector RIP failure never publishes new selector. Partial RAM/RIP failures leave stream/GPR uncommitted and fatal, no rollback or retry claim. Tests run default, NO_BLOBS, BOOT_MENU and both macros ASan/UBSan. Default and NO_BLOBS O2 freestanding .text compare byte-identical to frozen base. No shared/default/native modifications or KVM run.
