@@ -13,8 +13,26 @@
 #include "firmware_irq_lvt_same.h"
 #include "firmware_cpu_mode_de.h"
 #include "firmware_active_cpu_de.h"
+#ifdef SYLE_FIRMWARE_DISK
+#include "firmware_boot_cpu.h"
+#define fcp_efer_allowed fboot_efer_allowed
+#define OBS_EFER_OK(v) (((v)&~UINT64_C(1))==0x500)
+#define OBS_CR4_MASK UINT64_C(0x26f8)
+#else
+#define OBS_EFER_OK(v) ((v)==0x500)
+#define OBS_CR4_MASK UINT64_C(0x2668)
+#endif
 #include "firmware_debug_read.h"
 static struct fdr_bank debug_bank;
+#ifdef SYLE_FIRMWARE_DISK
+static bool disk_pic_active,disk_pic_window;
+static bool disk_tick(void);
+static bool disk_cs_identity(uint64_t,uint64_t);
+#else
+#define disk_pic_active false
+#define disk_pic_window false
+#define disk_tick() true
+#endif
 static struct ftis_session irq_session;
 static struct ftirt_route irq_route;
 static struct fiw_state irq_window;
@@ -27,6 +45,19 @@ static bool irq_identity(void);
 #include "firmware_wbinvd.h"
 #include "firmware_tpm_transaction.h"
 #include "firmware_vars_rom.h"
+#ifdef SYLE_FIRMWARE_CODE_ROM
+#include "firmware_code_rom.h"
+#endif
+#ifdef SYLE_FIRMWARE_PAUSE
+#include "firmware_pause.h"
+static struct fpa_state pause_state;
+#ifdef SYLE_FIRMWARE_HALT
+#include "firmware_halt.h"
+static struct fhl_state halt_state;
+static bool halt_supported;
+static uint64_t halt_eois,halt_last_eoi_wake;
+#endif
+#endif
 #include "guest_mmio_mov.h"
 #include "firmware_vars_dirty_transaction.h"
 #include "firmware_dirty_cas.h"
@@ -37,6 +68,9 @@ static struct fsdt_state svr_dirty;
 static struct faat_state apic_accessed;
 static struct fvdt_state vars_dirty;
 static struct fvr_state vars_rom;
+#ifdef SYLE_FIRMWARE_CODE_ROM
+static struct fcode_state code_rom;
+#endif
 static struct ftt_state tpm_absent_transaction;
 extern bool fwb_kvm_environment(void);
 extern bool fwb_kvm_maintain(void);
@@ -93,14 +127,18 @@ static bool observation_sink(void*unused,const char*bytes,size_t count){
   chunk[n]=0;log_text(chunk);off+=n;}
  return true;
 }
-static void observation_text(const char*s){if(observation_deferred){size_t n=0;while(s[n])n++;(void)fot_text(&observation_trace,s,n);}else log_text(s);}
-static void observation_hex(uint64_t value){if(observation_deferred)(void)fot_hex(&observation_trace,value);else log_hex(value);}
+static bool console_sample_quiet;
+static void observation_text(const char*s){if(console_sample_quiet)return;if(observation_deferred){size_t n=0;while(s[n])n++;(void)fot_text(&observation_trace,s,n);}else log_text(s);}
+static void observation_hex(uint64_t value){if(console_sample_quiet)return;if(observation_deferred)(void)fot_hex(&observation_trace,value);else log_hex(value);}
 static bool observation_start(void){
  if(!fot_defer(&observation_trace))return false;
  observation_deferred=true;return true;
 }
 static bool observation_ok(void){return observation_trace.ready&&!observation_trace.failed&&!observation_finished;}
 static void observation_finish(void){
+#ifdef SYLE_FIRMWARE_CONSOLE
+ extern void log_serial_drain_mode(void);log_serial_drain_mode();
+#endif
  if(observation_finished)return;
  observation_finished=true;observation_deferred=false;
  log_text("OVMF.TRACE guest_execution_stopped_deferred_dump_begin\n");
@@ -113,6 +151,12 @@ static void observation_finish(void){
  log_text(" no_extra_clock_samples_same2048_30s_timer_VMbudget\n");
 }
 static void observation_fatal(void){observation_deferred=false;log_text("OVMF.TRACE unsafe_host_fatal_no_drain_guarantee\n");}
+#ifdef SYLE_FIRMWARE_CONSOLE
+#include "firmware_console.h"
+static struct fcon_state console_state;
+static uint8_t console_output[65536];static unsigned console_count;
+static void console_live_byte(uint8_t b){char text[2]={(char)b,0};log_text(text);}
+#endif
 #define log_text observation_text
 #define log_hex observation_hex
 static bool clock_init(void) {
@@ -228,7 +272,7 @@ static bool de_gate(struct fcmd_gate*g){
  rd(0x4012,&g->entry_controls)&&(g->entry_controls&4)&&
  rd(0x400c,&g->exit_controls)&&(g->exit_controls&4)&&
  rd(0x4004,&bitmap)&&(bitmap&0x42)==0x42&&(host.caps.cr4_fixed1&8)&&
- g->primary_controls<=UINT32_MAX&&g->entry_controls<=UINT32_MAX&&g->exit_controls<=UINT32_MAX&&bitmap<=UINT32_MAX;
+ g->primary_controls<=UINT32_MAX&&g->entry_controls<=UINT32_MAX&&g->exit_controls<=UINT32_MAX&&bitmap<=UINT32_MAX&&(!disk_pic_active||bitmap==0x42);
 }
 static bool de_mode_write(enum fcm_register reg,uint64_t value,struct fcm_state*out){
  struct fcmd_gate gate;return de_gate(&gate)&&fcmd_write(&mode,mem.layout.ram.size,reg,value,&gate,out);
@@ -242,12 +286,18 @@ static bool irq_identity(void){
  irq_planned(0x4012,&expected_entry)&&!(expected_primary&4)&&
  !bad&&current==host.vmcs_page&&host.ready&&!host.quarantined&&safe()&&
  !(flags&0x200)&&!lvn_armed_rip&&!paging_ap_start_attempted()&&
- rd(0x4002,&primary)&&primary==(expected_primary|(irq_window.armed?4:0))&&(primary&(1u<<31))&&
+ rd(0x4002,&primary)&&primary==(expected_primary|((irq_window.armed||disk_pic_window)?4:0))&&(primary&(1u<<31))&&
  rd(0x401e,&secondary)&&secondary==0xc2&&rd(0x201a,&eptp)&&eptp==mem.eptp&&
  rd(0x4000,&pin)&&pin==expected_pin&&!(pin&0x80)&&fag_host_events_exit(pin)&&
  rd(0x4012,&entry)&&entry==(expected_entry|0x200)&&!(entry&~UINT64_C(0xd3ff))&&
- rd(0x2806,&efer)&&efer==0x500&&rd(0x0802,&cs)&&cs&&!(cs&7)&&
- rd(0x4816,&cs_ar)&&(cs_ar&~UINT64_C(1))==0xa09a&&rd(0x6804,&cr4)&&!(cr4&~UINT64_C(0x2668));
+ rd(0x2806,&efer)&&OBS_EFER_OK(efer)&&rd(0x0802,&cs)&&cs&&cs<=UINT16_MAX&&
+ rd(0x4816,&cs_ar)&&
+#ifdef SYLE_FIRMWARE_DISK
+ disk_cs_identity(cs,cs_ar)
+#else
+ !(cs&7)&&(cs_ar&~UINT64_C(1))==0xa09a
+#endif
+&&rd(0x6804,&cr4)&&!(cr4&~OBS_CR4_MASK);
 }
 static bool irq_snapshot(struct lei_snapshot*out,uint32_t*primary){
  uint64_t flags,block,activity,event,vector=0,debug,dr7,p;
@@ -452,6 +502,32 @@ static bool fwcfg_dispatch(uint64_t rip,uint64_t q,unsigned length,uint64_t flag
  if(!ok)io_instruction_diag(rip);
  return ok;
 }
+#ifdef SYLE_FIRMWARE_PAUSE
+static bool pause_read(void*x,uint32_t field,uint64_t*value){(void)x;return traced_rd(field,value);}
+static bool pause_dispatch(void){
+ struct fpa_trace trace={0};
+ if(!irq_session.ready||!irq_identity()||!observation_ok())return false;
+ enum fat_result result=fpa_handle(&pause_state,&mem,true,0,pause_read,pic_write,&trace);
+ log_text("OVMF.PAUSE result=");log_hex((uint64_t)(int64_t)result);
+ log_text(" rip=");log_hex(trace.rip);log_text(" length=");log_hex(trace.length);
+ log_text(" flags=");log_hex(trace.flags);log_text(" primary=");log_hex(trace.primary);
+ log_text(" secondary=");log_hex(trace.secondary);log_text(" available=");log_hex(trace.available);
+ log_text(" byte0=");log_hex(trace.bytes[0]);log_text(" byte1=");log_hex(trace.bytes[1]);
+ log_text(" completed=");log_hex(pause_state.completed);log_text(" terminal=");log_hex(pause_state.failed);
+ log_text(" unchanged_clock_and_exit_budgets\n");
+ if(result==FAT_FATAL)mode_commit_failed();
+ return result==FAT_COMMITTED;
+}
+#endif
+#ifdef SYLE_FIRMWARE_HALT
+#include "firmware_halt_observe.inc"
+#endif
+#ifdef SYLE_FIRMWARE_CONSOLE
+#include "firmware_console_observe.inc"
+#endif
+#ifdef SYLE_FIRMWARE_DISK
+#include "firmware_disk_observe.inc"
+#endif
 static bool dispatch(uint64_t reason){
  uint64_t rip,len,q,vector,cs;
  if(!traced_rd(0x681e,&rip)||!traced_rd(0x440c,&len)||!traced_rd(0x6400,&q)||!traced_rd(0x4408,&vector))return false;
@@ -461,21 +537,50 @@ static bool dispatch(uint64_t reason){
  }
  if(vector){log_text("OVMF.CLOCK_APIC reject=vectoring value=");log_hex(vector);log_text("\n");return false;}
  if(!traced_rd(0x0802,&cs))return false;
- if(cs&3){log_text("OVMF.CLOCK_APIC reject=cpl cs=");log_hex(cs);log_text("\n");return false;}
+ if(cs&3){
+#ifdef SYLE_FIRMWARE_DISK
+  uint64_t ar;if((reason!=10&&reason!=16&&reason!=52)||!rd(0x4816,&ar)||!disk_cs_identity(cs,ar))return false;
+#else
+  log_text("OVMF.CLOCK_APIC reject=cpl cs=");log_hex(cs);log_text("\n");return false;
+#endif
+ }
  uint64_t flags,blocking,pending_debug;
  if(!traced_rd(0x6820,&flags)||!traced_rd(0x4824,&blocking)||!traced_rd(0x6822,&pending_debug))return false;
  if(reason==48||reason==52){log_text("OVMF.CLOCK_APIC instruction_gate reason=");log_hex(reason);log_text(" flags=");log_hex(flags);log_text(" blocking=");log_hex(blocking);log_text(" pending_debug=");log_hex(pending_debug);log_text(" cs=");log_hex(cs);log_text("\n");}
  if(reason==52){
   uint64_t dr7,event;if(!traced_rd(0x681a,&dr7)||!traced_rd(0x4016,&event))return false;
-  bool resume=fpr_resume(reason,cs,flags,blocking,pending_debug,dr7,event,vector);
+  /* For CPL3, identity above authenticated the flat user CS/SS. The pure
+   * preemption flag/event predicate is privilege-independent. */
+  bool resume;
+#ifdef SYLE_FIRMWARE_DISK
+  resume=fboot_preemption_resume(reason,cs,flags,blocking,pending_debug,dr7,event,vector);
+#else
+  resume=fpr_resume(reason,cs,flags,blocking,pending_debug,dr7,event,vector);
+#endif
   log_text("OVMF.CLOCK_APIC preemption_resume_unchanged=");log_hex(resume);log_text(" dr7=");log_hex(dr7);log_text(" entry_event=");log_hex(event);log_text("\n");
   return resume; /* No RIP/RFLAGS write: this was not an emulated instruction. */
  }
+#ifdef SYLE_FIRMWARE_HALT
+ if(reason==12)return halt_dispatch();
+#endif
+#ifdef SYLE_FIRMWARE_PAUSE
+ if(reason==40)return pause_dispatch(); /* Own RF retirement; outer clock/IRQ accounting unchanged. */
+#endif
  /* Only exact CR8 accesses use their own RF retirement and strict instruction gate. */
  if(reason==0){debug_bank.failed=true;log_text("OVMF.IRQ exception_exit_no_debug_state_resume\n");return false;}
- if(reason==29){if(len>15)return false;return debug_read_dispatch(rip,q,(unsigned)len,flags,blocking,pending_debug,(uint32_t)vector);}
+ if(reason==29){if(len>15)return false;
+#ifdef SYLE_FIRMWARE_DISK
+ return disk_debug(rip,q,(unsigned)len,flags,blocking,pending_debug,(uint32_t)vector);
+#else
+ return debug_read_dispatch(rip,q,(unsigned)len,flags,blocking,pending_debug,(uint32_t)vector);
+#endif
+}
  if(reason==28&&(q&15)==8){if(len>15)return false;return irq_cr8_access(rip,q,(unsigned)len,flags,blocking,pending_debug,(uint32_t)vector);}
  if((flags&(UINT64_C(1)<<8))||((flags&(UINT64_C(1)<<16))&&reason!=48)||blocking||pending_debug){log_text("OVMF.CLOCK_APIC reject=instruction_state\n");return false;}
+#ifdef SYLE_FIRMWARE_DISK
+ if(reason==31&&(uint32_t)native.gpr[2]==0xce)return disk_inject_gp(rip,(unsigned)len);
+ if(reason==14)return disk_invlpg(rip,q,(unsigned)len);
+#endif
  if(reason==48){
   if(active_apic.device.lint0_extint_deasserted&&!flq_pic_quiet(&pic)){
    log_text("OVMF.CLOCK_APIC reject=lint0_pic_not_quiet\n");return false;
@@ -500,6 +605,18 @@ static bool dispatch(uint64_t reason){
   log_text(" lint1_nmi_quiet_profile=");log_hex(active_apic.device.lint1_nmi_deasserted);
   log_text(" pic_master=");log_hex(pic.master);log_text(" slave=");log_hex(pic.slave);
   log_text(" master_phase=");log_hex(pic.chip[0].phase);log_text(" slave_phase=");log_hex(pic.chip[1].phase);log_text("\n");
+#ifdef SYLE_FIRMWARE_CODE_ROM
+  if(fwl_contains(&mem.layout.code,e.physical,1)){
+   io_instruction_diag(rip);
+   enum fat_result result=fcode_mmio(&code_rom,native.gpr,&m,&e,true,0,pic_write);
+   log_text("OVMF.CODE_ROM result=");log_hex((uint64_t)(int64_t)result);
+   log_text(" address=");log_hex(code_rom.address);log_text(" original=");log_hex(code_rom.original);
+   log_text(" stage=");log_hex(code_rom.stage);log_text(" terminal=");log_hex(code_rom.failed);
+   log_text(" immutable_backing_no_flash_write\n");
+   if(result==FAT_FATAL)mode_commit_failed();
+   return result==FAT_COMMITTED;
+  }
+#endif
   if(fwl_contains(&mem.layout.vars,e.physical,1)){
    io_instruction_diag(rip);
    struct fvr_trace rom_trace;
@@ -559,16 +676,31 @@ static bool dispatch(uint64_t reason){
    return tpm_result==FAT_COMMITTED;
   }
   if(irq_session.ready){
+#ifdef SYLE_FIRMWARE_HALT
+   bool halt_was_in_service=irq_session.owner.in_service;
+#endif
    enum fat_result ir=fiap_mmio(&active_apic.device,&irq_session,native.gpr,&m,&e,0,pic_write);
    if(ir==FAT_REJECTED&&e.physical==UINT64_C(0xfee00320)){
     irq_lvt_diagnose(&m,&e);
     bool admitted=irq_identity()&&observation_ok();
+    #ifdef SYLE_FIRMWARE_DISK
+    ir=film_write(&active_apic.device,&irq_session,native.gpr,&m,&e,admitted,0,irq_write);
+#else
     ir=fils_write(&active_apic.device,&irq_session,native.gpr,&m,&e,admitted,0,irq_write);
+#endif
     log_text("OVMF.IRQ LVT_same_result=");log_hex((uint64_t)(int64_t)ir);
     log_text(" admitted=");log_hex(admitted);log_text(" last=");log_hex(irq_session.owner.last);
     log_text(" deadline=");log_hex(irq_session.owner.deadline_bus);log_text(" pending=");log_hex(irq_session.owner.pending);
     log_text(" ISR=");log_hex(irq_session.owner.in_service);log_text(" terminal=");log_hex(irq_session.owner.terminal);log_text("\n");
    }
+#ifdef SYLE_FIRMWARE_HALT
+   if(ir==FAT_COMMITTED&&e.physical==UINT64_C(0xfee000b0)&&halt_was_in_service&&
+      !irq_session.owner.in_service&&halt_state.wakeups>halt_last_eoi_wake){
+    halt_last_eoi_wake=halt_state.wakeups;halt_eois++;
+    log_text("OVMF.HLT wake_EOI wakeups=");log_hex(halt_state.wakeups);
+    log_text(" eois=");log_hex(halt_eois);log_text(" rip=");log_hex(e.rip);log_text(" committed_guest_EOI\n");
+   }
+#endif
    log_text("OVMF.IRQ mmio result=");log_hex((uint64_t)(int64_t)ir);
    log_text(" gpa=");log_hex(e.physical);log_text(" pending=");log_hex(irq_session.owner.pending);
    log_text(" ISR=");log_hex(irq_session.owner.in_service);log_text("\n");
@@ -643,6 +775,19 @@ static bool dispatch(uint64_t reason){
  if(len<1||len>15||rip>UINT64_MAX-len)return false;
  if(reason==30){
   unsigned port=(unsigned)((q>>16)&0xffff);
+#ifdef SYLE_FIRMWARE_CONSOLE
+#ifdef SYLE_FIRMWARE_DISK
+  if(port==0x80||(port>=0x3f8&&port<=0x3ff)||(port>=0x2f8&&port<=0x2ff)||(port>=0x3e8&&port<=0x3ef)||(port>=0x2e8&&port<=0x2ef))return disk_legacy_io(rip,q,(unsigned)len,flags);
+  if(port==0x40||(port==0x43&&((uint8_t)native.gpr[0]>>6)!=2))return disk_legacy_io(rip,q,(unsigned)len,flags);
+  if((port==0x20||port==0x21||port==0xa0||port==0xa1)&&(disk_pic_active||(!(q&8)&&port==0x20&&(uint8_t)native.gpr[0]==0x11&&irq_session.ready&&irq_session.owner.masked)))return disk_legacy_io(rip,q,(unsigned)len,flags);
+  if(port==0x61||port==0x42||(port==0x43&&((uint8_t)native.gpr[0]>>6)==2))return disk_pit2_io(rip,q,(unsigned)len);
+  if(disk_port((uint16_t)port))return disk_dispatch(rip,q,(unsigned)len,false);
+  if(port>=0xcfc&&port<=0xcff&&(pci.pci.address&0x80ffff00)==0x80001800)return disk_dispatch(rip,q,(unsigned)len,true);
+#endif
+  if(fcon_port(&console_state,(uint16_t)port))return console_dispatch(rip,q,(unsigned)len);
+  if(port>=0xcfc&&port<=0xcff&&(pci.pci.address&0x80ffff00)==0x80001000)
+   return console_config(rip,q,(unsigned)len);
+#endif
   if(port==0x510||port==0x511||(port>=0x514&&port<=0x51b))return fwcfg_dispatch(rip,q,(unsigned)len,flags,blocking,pending_debug,vector);
   if(port==0x70||port==0x71){
    if(!clock_sync())return false;
@@ -673,6 +818,9 @@ static bool dispatch(uint64_t reason){
   native.gpr[0]=r.a;native.gpr[1]=r.b;native.gpr[2]=r.c;native.gpr[3]=r.d;
   log_text("OVMF.CLOCK_APIC CPUID minimal startup profile\n");
  }else if(reason==28){
+#ifdef SYLE_FIRMWARE_DISK
+  if(mode.ia32e&&!disk_cr_encoding(rip,q,(unsigned)len))return false;
+#endif
   unsigned cr=q&15,access=(q>>4)&3,reg=(q>>8)&15;
   if((q&~UINT64_C(0xf3f))||(cr!=0&&cr!=3&&cr!=4)||access>1)return false;
   if(access==0){uint64_t v;struct fcm_state n;if(!reg_read(reg,&v))return false;
@@ -680,8 +828,11 @@ static bool dispatch(uint64_t reason){
    if(de_transition){
     uint8_t bytes[15];size_t count=io_instruction_fetch(rip,bytes);uint64_t hw0,hw4,shadow0,shadow4,mask0,mask4;
     io_instruction_diag(rip);
-    if(!irq_session.ready||!irq_identity()||q!=4||len!=3||count<3||bytes[0]!=0x0f||bytes[1]!=0x22||bytes[2]!=0xe0||
-     mode.cr4!=0x660||v!=0x668||!rd(0x6800,&hw0)||!rd(0x6804,&hw4)||
+    bool de_encoding=q==4&&len==3&&count>=3&&bytes[0]==0x0f&&bytes[1]==0x22&&bytes[2]==0xe0&&mode.cr4==0x660&&v==0x668;
+#ifdef SYLE_FIRMWARE_DISK
+    de_encoding=fboot_cr_encoding(q,(unsigned)len,bytes,count);
+#endif
+    if(!irq_session.ready||!irq_identity()||!de_encoding||!rd(0x6800,&hw0)||!rd(0x6804,&hw4)||
      !rd(0x6004,&shadow0)||!rd(0x6006,&shadow4)||!rd(0x6000,&mask0)||!rd(0x6002,&mask4)||
      mask0!=UINT64_MAX||mask4!=UINT64_MAX||shadow0!=mode.cr0||shadow4!=mode.cr4||
      hw0!=(mode.cr0|(host.caps.cr0_fixed0&~UINT64_C(0x80000001)))||hw4!=(mode.cr4|0x2000))return false;
@@ -689,12 +840,15 @@ static bool dispatch(uint64_t reason){
     log_text(" host_edx=");log_hex(cpu.basic_edx);log_text(" fixed1=");log_hex(host.caps.cr4_fixed1);log_text(" all_MOVDR_failstop\n");
    }
    if(!de_mode_write(cr==0?FCM_CR0:(cr==3?FCM_CR3:FCM_CR4),v,&n)||!commit_mode(&n))return false;
-   if(de_transition){uint64_t hw,shadow;if(!rd(0x6804,&hw)||!rd(0x6006,&shadow)||hw!=0x2668||shadow!=0x668)return mode_commit_failed();
+   if(de_transition){uint64_t hw,shadow;if(!rd(0x6804,&hw)||!rd(0x6006,&shadow)||hw!=(v|0x2000)||shadow!=v)return mode_commit_failed();
     log_text("OVMF.IRQ DE_config readback_hw4=");log_hex(hw);log_text(" shadow4=");log_hex(shadow);log_text(" ISR=");log_hex(irq_session.owner.in_service);log_text(" pending=");log_hex(irq_session.owner.pending);log_text(" configuration_only\n");}
   }
   else if(!reg_write(reg,cr==0?mode.cr0:(cr==3?mode.cr3:mode.cr4)))return false;
 
  }else if(reason==31||reason==32){
+#ifdef SYLE_FIRMWARE_DISK
+  if(disk_linux_msr_supported((uint32_t)native.gpr[2]))return disk_gs_msr(rip,(unsigned)reason,(unsigned)len);
+#endif
   if((uint32_t)native.gpr[2]==0x17){
    struct fcp_result vendor,signature;uint64_t dr7,event;
    if(!fcad_query(&cpu,0,0,&vendor)||!fcad_query(&cpu,1,0,&signature)||
@@ -744,12 +898,28 @@ bool firmware_probe_run(void){
  if(!fpp_init(&pci,active_apic.epoch,active_apic.reference,clock_source.max_gap))return false;
  log_text("OVMF.CLOCK_APIC bindings ready\n");
  if(!fwm_prepare(&mem,&memory_ops,firmware_probe_start,(size_t)(firmware_probe_end-firmware_probe_start),firmware_vars_start,(size_t)(firmware_vars_end-firmware_vars_start),ops.physical_bits)){log_text("OVMF.CLOCK_APIC fail=memory_prepare\n");if(!fwm_release(&mem))fatal();return false;}
+#ifdef SYLE_FIRMWARE_DISK
+ struct vro_io disk_io;
+ if(!disk_legacy_init()||!disk_bytes||!vfr_bind(&disk_ram,&mem,&disk_io)||!vrt_init(&disk_state,disk_io,disk_bytes,disk_size))goto cleanup;
+#endif
  if(!fvr_init(&vars_rom,&mem)){log_text("OVMF.CACHE_KVM fail=vars_ROM_contract\n");goto cleanup;}
  log_text("OVMF.CACHE_KVM vars_ROM_candidate=");log_hex(vars_rom.address);log_text(" original=");log_hex(vars_rom.original);log_text("\n");
+#ifdef SYLE_FIRMWARE_CODE_ROM
+ if(!fcode_init(&code_rom,&mem)){log_text("OVMF.CODE_ROM fail=contract\n");goto cleanup;}
+ log_text("OVMF.CODE_ROM candidate=");log_hex(code_rom.address);
+ log_text(" original=");log_hex(code_rom.original);log_text("\n");
+#endif
  if(!fcr_init(&cmos,&mem.layout,active_apic.epoch,active_apic.reference)){log_text("OVMF.CLOCK_APIC fail=cmos_memory_layout\n");goto cleanup;}
  if(!ffc_init(&fwcfg.stream,mem.layout.ram.size,1))goto cleanup;
  if(!enable())goto cleanup;
  if(!fwh_open(&host,&ops,&mem,(uint64_t)(uintptr_t)(fallback_stack+sizeof fallback_stack),(uint64_t)(uintptr_t)fallback))goto cleanup;
+#ifdef SYLE_FIRMWARE_HALT
+ uint64_t halt_misc;
+ if(!ops.read_msr(ops.context,0x485,&halt_misc))goto cleanup;
+ halt_supported=(halt_misc&0x40)!=0;
+ log_text("OVMF.HLT capability misc=");log_hex(halt_misc);log_text(" supported=");log_hex(halt_supported);log_text("\n");
+ if(!halt_supported)goto cleanup;
+#endif
  uint64_t pin_controls;if(!rd(0x4000,&pin_controls)||!fag_host_events_exit(pin_controls))goto cleanup;
  log_text("OVMF.CLOCK_APIC host_external_nmi_exiting pin=");log_hex(pin_controls);log_text("\n");
  if(!ops.invept(ops.context,mem.eptp)||host.caps.timer_shift>24)goto cleanup;
@@ -759,17 +929,34 @@ bool firmware_probe_run(void){
  unsigned observed=0;
  for(;observed<2048;observed++){
   /* Bounded diagnostic expansion only; same per-entry execution slice. */
-  if(!observation_ok()||!clock_sync()||active_apic.failed||!fag_valid(&active_apic.device))break;
+  if(!observation_ok()||!clock_sync()||!disk_tick()||active_apic.failed||!fag_valid(&active_apic.device))break;
   if(active_apic.reference-active_apic.clock.timer.origin>=UINT64_C(300000000)){
    log_text("OVMF.CLOCK_APIC observation_time_budget=30s reached\n");break;
   }
   struct fcmd_gate entry_debug;
-  uint64_t flags;if(debug_bank.failed||!de_gate(&entry_debug)||!rd(0x6820,&flags)||(flags&0x100)||!lpic_entry_ok(&pic,flags))break;
+  uint64_t flags;if(debug_bank.failed||!de_gate(&entry_debug)||!rd(0x6820,&flags)||(flags&0x100))break;
+#ifdef SYLE_FIRMWARE_DISK
+  if(!(disk_pic_active?disk_pic_entry_ok(flags):lpic_entry_ok(&pic,flags)))break;
+#else
+  if(!lpic_entry_ok(&pic,flags))break;
+#endif
   uint64_t entry_event,vectoring,pending;
   if(active_apic.device.lint0_extint_deasserted&&(!flq_pic_quiet(&pic)||
    !rd(0x4016,&entry_event)||entry_event||(native.resume&&(!rd(0x4408,&vectoring)||(vectoring&(irq_session.ready?UINT64_C(0x80000000):UINT64_MAX))))||
    !rd(0x6822,&pending)||pending)){log_text("OVMF.CLOCK_APIC reject=lint0_entry_contract\n");break;}
+#ifdef SYLE_FIRMWARE_DISK
+  if(disk_pic_active&&!disk_input()){log_text("OVMF.DISK input_before_reservation_failed\n");break;}
+#endif
   uint64_t irq_attempt=0,window_attempt=0;bool staged=false,windowed=false;
+#ifdef SYLE_FIRMWARE_HALT
+  bool halt_receipt=false;
+#endif
+#ifdef SYLE_FIRMWARE_DISK
+  if(disk_gp_pending()){if(!disk_gp_entry())break;}else
+  if(disk_pic_active){
+   if(!disk_tick()||!disk_pic_before(&staged))break;
+  }else
+#endif
   if(irq_session.ready){
    struct lei_snapshot snapshot;uint32_t primary;bool priority;
    if(!irq_snapshot(&snapshot,&primary)||!fiap_select(&active_apic.device,&irq_session,&priority))break;
@@ -787,13 +974,24 @@ bool firmware_probe_run(void){
    }
   }
   if(!wr(0x482e,UINT64_C(1)<<(24-host.caps.timer_shift)))break;
-  if(irq_session.ready){
+  if(!disk_pic_active&&irq_session.ready){
    uint64_t entry_info,error,length;
    if(!irq_identity()||!rd(0x4016,&entry_info)||!rd(0x4018,&error)||!rd(0x401a,&length)||
       entry_info!=(staged?UINT64_C(0x80000020):0)||error||length)break;
    if(staged){log_text("OVMF.IRQ staged_entry_readback=");log_hex(entry_info);log_text(" error_length_zero1 VMCS_profile_verified1\n");}
   }
   if(!observation_ok()){mode_commit_failed();break;}
+#ifdef SYLE_FIRMWARE_HALT
+  if(!halt_entry_check()){log_text("OVMF.HLT entry_state_rejected\n");mode_commit_failed();break;}
+  bool entered_halted=halt_state.halted;
+#endif
+#ifdef SYLE_FIRMWARE_CONSOLE
+#ifdef SYLE_FIRMWARE_DISK
+  if(!disk_pic_active&&!disk_input()){log_text("OVMF.CONSOLE input_error\n");break;}
+#else
+  if(!console_poll()){log_text("OVMF.CONSOLE input_error\n");break;}
+#endif
+#endif
   native.entry_status=UINT32_MAX;
   enum lvs_result result=lvs_run(&state,&state_ops);if(!safe())fatal();
   uint64_t raw_reason=0,raw_vector=0,raw_interrupt=0;bool exit_fields=false;
@@ -801,6 +999,14 @@ bool firmware_probe_run(void){
    exit_fields=rd(0x4402,&raw_reason)&&rd(0x4408,&raw_vector)&&rd(0x4404,&raw_interrupt)&&
       raw_reason<=UINT32_MAX&&raw_vector<=UINT32_MAX&&raw_interrupt<=UINT32_MAX;
   }
+#ifdef SYLE_FIRMWARE_DISK
+  if(disk_gp_pending()){
+   if(!disk_gp_after(native.entry_status==1&&result==LVS_EXIT&&exit_fields&&safe(),(uint32_t)raw_reason,(uint32_t)raw_vector,(uint32_t)raw_interrupt))break;
+  }else
+  if(disk_pic_active){
+   if(!disk_pic_after(native.entry_status==1&&result==LVS_EXIT&&exit_fields&&safe()&&irq_identity(),(uint32_t)raw_reason,(uint32_t)(raw_vector&0x80000000?raw_vector:0),&halt_receipt))break;
+  }else
+#endif
   if(staged){
    struct fine_outcome evidence={.evidence={
     .observed={host.vmcs_page,host.vmcs_page,irq_attempt},.staged_info=0x80000020,
@@ -816,6 +1022,9 @@ bool firmware_probe_run(void){
    log_text(" ISR=");log_hex(irq_session.owner.in_service);log_text(" reserved=");log_hex(irq_session.owner.reserved);
    log_text(" terminal=");log_hex(irq_session.owner.terminal);log_text("\n");
    if(receipt!=FTIS_ACCOUNTED)break;
+#ifdef SYLE_FIRMWARE_HALT
+   halt_receipt=true;
+#endif
   }
   if(windowed){
    uint64_t actual_primary;
@@ -824,27 +1033,64 @@ bool firmware_probe_run(void){
       (uint32_t)raw_reason,true,0,irq_write)!=FIW_RECHECK)break;
   }
   if(result!=LVS_EXIT||!exit_fields){log_text("OVMF.IRQ unproven_exit_stop\n");break;}
+#ifdef SYLE_FIRMWARE_HALT
+  if(entered_halted&&!halt_after_entry(native.entry_status==1&&!state.host_dirty&&safe()&&irq_identity(),staged,halt_receipt))break;
+#endif
   reason=raw_reason;
   if(!clock_sync())break;
   if(reason==7){
+#ifdef SYLE_FIRMWARE_DISK
+   if(disk_pic_active){
+    if(!disk_pic_window||!gw_window_exit(0,disk_read_field,irq_write,disk_pic_run.must_one,disk_pic_run.allowed_one))break;
+    disk_pic_window=false;native.resume=1;continue;
+   }
+#endif
    if(!windowed)break;
    native.resume=1;continue; /* Fresh next gate, no RIP/RF write or receipt. */
   }
   uint64_t rip=0,q=0;rd(0x681e,&rip);rd(0x6400,&q);
   log_text("OVMF.CLOCK_APIC exit reason=");log_hex(reason);log_text(" rip=");log_hex(rip);log_text(" qual=");log_hex(q);log_text(" cr0=");log_hex(mode.cr0);log_text(" cr4=");log_hex(mode.cr4);log_text(" efer=");log_hex(mode.efer);log_text(" rax=");log_hex(native.gpr[0]);log_text(" rcx=");log_hex(native.gpr[2]);if(reason==48){uint64_t gpa=0;rd(0x2400,&gpa);log_text(" gpa=");log_hex(gpa);}log_text("\n");
   if(reason>UINT16_MAX||!dispatch(reason))break;
+#ifdef SYLE_FIRMWARE_HALT_PROBE
+  if(halt_state.completed>=4&&halt_state.halted&&halt_state.idle_exits&&halt_state.wakeups>=3&&halt_eois>=3){
+   observed++;
+   log_text("OVMF.HLT probe_complete completed=");log_hex(halt_state.completed);
+   log_text(" idle_exits=");log_hex(halt_state.idle_exits);log_text(" wakeups=");log_hex(halt_state.wakeups);
+   log_text(" eois=");log_hex(halt_eois);log_text(" reference=");log_hex(active_apic.reference);
+   log_text(" bounded_three_wake_cycles_not_boot_acceptance\n");break;
+  }
+#endif
   native.resume=1;
  }
+#ifdef SYLE_FIRMWARE_HALT
+ log_text("OVMF.HLT terminal completed=");log_hex(halt_state.completed);
+ log_text(" idle_exits=");log_hex(halt_state.idle_exits);log_text(" wakeups=");log_hex(halt_state.wakeups);
+ log_text(" eois=");log_hex(halt_eois);log_text(" halted=");log_hex(halt_state.halted);
+ log_text(" failed=");log_hex(halt_state.failed);log_text("\n");
+#endif
  observation_finish();
  if(observed==2048)log_text("OVMF.CLOCK_APIC observation_exit_budget=2048 reached\n");
  log_text("OVMF.CLOCK_APIC completed_dispatches=");log_hex(observed);log_text("\n");
+#ifdef SYLE_FIRMWARE_DISK
+ log_text("OVMF.DISK PIC receipts=");log_hex(disk_pic_receipts);log_text(" irq0=");log_hex(disk_irq0_receipts);log_text(" irq4=");log_hex(disk_irq4_receipts);log_text(" rx_sent=");log_hex(disk_rx_sent);log_text(" rx_read=");log_hex(disk_rx_read);log_text(" active=");log_hex(disk_pic_active);log_text(" IRR=");log_hex(disk_legacy.master.irr);log_text(" ISR=");log_hex(disk_legacy.master.isr);log_text(" mask=");log_hex(disk_legacy.master.imr);log_text("\n");
+ log_text("OVMF.DISK terminal bar=");log_hex(disk_state.bar);log_text(" completions=");log_hex(disk_completions);log_text(" failed=");log_hex(disk_state.failed);log_text("\n");
+#endif
  /* Observation only: never report boot success, even after the exit budget. */
+#ifdef SYLE_FIRMWARE_CONSOLE
+ log_text("OVMF.CONSOLE terminal bytes=");log_hex(console_count);log_text(" received=");log_hex(console_state.received);
+ log_text(" reads=");log_hex(console_state.reads);log_text(" writes=");log_hex(console_state.writes);
+ log_text(" bar=");log_hex(console_state.bar);log_text(" command=");log_hex(console_state.command);log_text(" failed=");log_hex(console_state.failed);log_text("\n");
+ for(unsigned i=0;i<console_count;i++){log_text("OVMF.CONSOLE TX byte=");log_hex(console_output[i]);log_text("\n");}
+#endif
  if(!ok){uint64_t rip=0,err=0,q=0;rd(0x681e,&rip);rd(0x4400,&err);rd(0x6400,&q);log_text("OVMF.CLOCK_APIC failed reason=");log_hex(reason);log_text(" rip=");log_hex(rip);log_text(" qual=");log_hex(q);log_text(" vmerr=");log_hex(err);log_text("\n");}
 cleanup:
  observation_finish();
  if(!ok){log_text("OVMF.CLOCK_APIC open_stage=");log_hex(host.open_stage);log_text("\n");}
  if(!lvh_close(&host))fatal();
  if(changed){if(!safe())fatal();__asm__ volatile("mov %0,%%cr4"::"r"(saved_cr4):"memory");changed=false;}
+#ifdef SYLE_FIRMWARE_DISK
+ vfr_abort(&disk_ram);
+#endif
  if(!fwm_release(&mem))fatal();
  log_text("OVMF.CLOCK_APIC STOPPED cleanup, boot not completed\n");return false;
 }

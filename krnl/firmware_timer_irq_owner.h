@@ -12,7 +12,7 @@
 struct fti_owner {
  uint64_t domain,origin,last,max_gap,deadline_bus;
  uint64_t expirations,generation,token,reserved_expirations;
- bool ready,pending,reserved,in_service,terminal;
+ bool ready,pending,reserved,in_service,terminal,masked;
 };
 #define FTI_VECTOR 32u
 #define FTI_PERIOD_BUS UINT64_C(10000000)
@@ -30,5 +30,8 @@ bool fti_account(struct fti_owner*,uint64_t token,bool cleaned_delivery_receipt)
 /* Call only after committed guest EOI; empty EOI is an idempotent no-op.
  * No MMIO or VMCS commit is performed. Outstanding reservation rejects/fatal. */
 bool fti_eoi(struct fti_owner*);
+/* LVT mask suppresses new timer requests, preserves already latched IRR/ISR
+ * and periodic phase. Only while no entry reservation is in flight. */
+bool fti_mask(struct fti_owner*,bool);
 void fti_quarantine(struct fti_owner*);
 #endif

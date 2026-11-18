@@ -70,4 +70,5 @@ int main(void){
  assert(fwc_apply(&s,g,&f,&e,true,&c,ramwr,vmwr)&&g[0]==0x123401&&s.stream.cursor==1);
  assert(fwm_release(m)&&!h->live);free(h->bytes);free(h);free(m);
  puts("firmware fwcfg transaction: REP/scalar, owned RAM, fatal partial commits PASS");
+ return 0;
 }

@@ -110,6 +110,9 @@ void ring3_syscall(struct frame *f) {
 #else
         log_text("MGMT.EXIT status="); log_hex(f->rdi);
         log_text("KRNL.IDLE\n");
+#ifdef SYLE_FIRMWARE_MANAGED
+        __asm__ volatile("outl %0,%1"::"a"(f->rdi?0x11u:0x10u),"Nd"((uint16_t)0xf4));
+#endif
         for (;;) __asm__ volatile("cli; hlt");
 #endif
     default: f->rax = UINT64_MAX; break;
@@ -184,6 +187,12 @@ __attribute__((noreturn)) void ring3_start(const struct syle_boot_info *boot) {
     size = (uintptr_t)mgmt_image_end - (uintptr_t)mgmt_image_start;
     if (!size || size > PAGE) panic("INVALID MANAGEMENT FLAT IMAGE");
     for (uintptr_t i=0; i<size; ++i) code[i]=mgmt_image_start[i];
+#elif defined(SYLE_FIRMWARE_MANAGED)
+    /* Kernel-selected immutable management ELF, separate from the disk payload. */
+    extern const unsigned char firmware_mgmt_start[],firmware_mgmt_end[];
+    size=(uintptr_t)firmware_mgmt_end-(uintptr_t)firmware_mgmt_start;
+    if(!user_elf_load(firmware_mgmt_start,size,code,data,&user_entry))
+        panic("INVALID FIRMWARE MANAGEMENT ELF");
 #else
     if (!boot->user_image.base || !boot->user_image.size ||
         boot->user_image_buffer.base != boot->user_image.base ||

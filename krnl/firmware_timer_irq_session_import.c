@@ -2,7 +2,7 @@
 static bool owner_fresh(const struct fti_owner*s){
  return !s->domain&&!s->origin&&!s->last&&!s->max_gap&&!s->deadline_bus&&
  !s->expirations&&!s->generation&&!s->token&&!s->reserved_expirations&&
- !s->ready&&!s->pending&&!s->reserved&&!s->in_service&&!s->terminal;
+ !s->ready&&!s->pending&&!s->reserved&&!s->in_service&&!s->terminal&&!s->masked;
 }
 static bool session_fresh(const struct ftis_session*s){
  return s&&!s->ready&&!s->failed&&!s->busy&&!s->domain&&!s->vmcs&&

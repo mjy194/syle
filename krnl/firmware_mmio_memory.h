@@ -16,7 +16,10 @@ enum fmm_access { FMM_READ,FMM_WRITE,FMM_EXEC };
 /* Physical32, CPL0, flat 64-bit CS, four-level paging only. 4K/2M pages;
  * no 1GiB/NX/PCID/LA57/SMEP/SMAP/PKU/CET. Requires hardware-set A throughout
  * and D on a write leaf; EFER exactly LME|LMA, CR4 allows PAE/MCE/
- * OSFXSR/OSXMMEXCPT/VMXE only. CR0.WP=0 supervisor writes are honored; never writes guest page tables. Output on success. */
+ * OSFXSR/OSXMMEXCPT/VMXE only. The separate BOOT_LINUX object adds PSE/PGE,
+ * EFER.SCE, and flat CPL3 instruction fetch with cumulative U/S permission at
+ * every level. Default objects retain the CPL0 masks above. CR0.WP=0 supervisor
+ * writes are honored; never writes guest page tables. Output on success. */
 bool fmm_translate(const struct fmm_memory*,uint64_t linear,enum fmm_access,uint64_t *gpa);
 /* Read executable owned RAM or CODE RX (never VARS/MMIO), up to 15 bytes, without fetching beyond either
  * the 15-byte maximum or a permission/mapping boundary. Returns available prefix.
@@ -39,6 +42,14 @@ bool fmm_validate_vars_write(const struct fmm_memory*,uint64_t decoded_linear,un
 /* Safe immutable VARS read for probe admission, same owned/EPT checks; no write
  * API. Snapshot/mappings must remain frozen. Output only on success. */
 bool fmm_read_vars_byte(const struct firmware_memory*,uint64_t gpa,uint8_t*);
+/* Independent pinned CODE RX contract, never VARS/MMIO admission. Exact byte
+ * store; q1AA plus capability-checked RW metadata, unique owned EPT leaf|35.
+ * Frozen ownership/page tables required throughout; no memory or A/D writes. */
+bool fmm_validate_code_write(const struct fmm_memory*,uint64_t decoded_linear,unsigned width,
+ uint32_t reason,uint64_t qualification,uint64_t exit_linear,uint64_t exit_gpa,uint32_t vectoring);
+bool fmm_read_code_byte(const struct firmware_memory*,uint64_t gpa,uint8_t*);
+/* First non00/50/70 byte in the first64KiB CODE block; output only on success. */
+bool fmm_code_probe_candidate(const struct firmware_memory*,uint64_t*address,uint8_t*original);
 /* Diagnostic only: observes raw guest entries from validated owned low RAM;
  * never treats these fields as execution approval or changes A/D/backing.
  * No host addresses returned. The independent translate results retain all

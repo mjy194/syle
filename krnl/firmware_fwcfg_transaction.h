@@ -2,7 +2,8 @@
 #define SYLE_FIRMWARE_FWCFG_TRANSACTION_H
 #include "firmware_fwcfg.h"
 #include "firmware_fwcfg_target.h"
-struct fwc_state {struct ffc_state stream;bool failed;unsigned stage;};
+#include "firmware_ramfb.h"
+struct fwc_state {struct ffc_state stream;struct frfb_state graphics;bool failed;unsigned stage;};
 struct fwc_exit {uint64_t rip,qualification,flags,blocking,pending_debug,dr7,entry_event,vectoring,es_base,linear;uint32_t length,info,es_ar;bool info_supported;};
 /* Exclusive stopped vCPU. Partial RAM/VMCS writes are fatal, never rollback
  * claims; caller destroys session. GPR/cursor publish only after full success. */

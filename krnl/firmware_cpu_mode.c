@@ -4,10 +4,15 @@
 #define PAE (UINT64_C(1)<<5)
 #define LME UINT64_C(0x100)
 #define LMA UINT64_C(0x400)
+#ifdef SYLE_FIRMWARE_BOOT_LINUX
+#define FCM_CR4_ALLOWED UINT64_C(0x6f0)
+#else
+#define FCM_CR4_ALLOWED UINT64_C(0x660)
+#endif
 static bool valid(const struct fcm_state*s,uint64_t ram){
  if(ram<4096||(ram&4095)||ram>UINT64_C(0xc0000000)||
  (s->cr0&~UINT64_C(0xe005003f))||!(s->cr0&16)||
- (s->cr4&~UINT64_C(0x660))||(s->efer&~UINT64_C(0xd01))||
+ (s->cr4&~FCM_CR4_ALLOWED)||(s->efer&~UINT64_C(0xd01))||
  (s->cr3&4095)||s->cr3>ram-4096)return false;
  if((s->cr0&PG)&&!(s->cr0&PE))return false;
  if((s->cr0&(1ull<<29))&&!(s->cr0&(1ull<<30)))return false;

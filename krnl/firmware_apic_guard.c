@@ -1,16 +1,20 @@
 #include "firmware_apic_guard.h"
 #define MASK (UINT32_C(1)<<16)
 bool fag_valid(const struct fag_state*s){
- if(!s||!s->ready||s->apic.x2apic||s->apic.irq.base!=UINT64_C(0xfee00d00)||
+ if(!s||!s->ready||(s->lint0_extint_deasserted&&s->lint0_extint_routed)||s->apic.x2apic||s->apic.irq.base!=UINT64_C(0xfee00d00)||
  s->apic.icr||s->apic.timer.armed||s->apic.timer.initial||s->apic.timer.deadline||
  s->apic.timer.period||s->apic.timer.last_now||s->apic.timer.last_expirations||
  (s->apic.timer.lvt&~UINT32_C(0x300ff)))return false;
- for(unsigned i=0;i<6;i++)if(!(s->apic.lvt[i]&MASK)&&!(i==3&&s->lint0_extint_deasserted&&s->apic.lvt[i]==0x700)&&!(i==4&&s->lint1_nmi_deasserted&&s->apic.lvt[i]==0x400))return false;
+ for(unsigned i=0;i<6;i++)if(!(s->apic.lvt[i]&MASK)&&!(i==3&&(s->lint0_extint_deasserted||s->lint0_extint_routed)&&s->apic.lvt[i]==0x700)&&!(i==4&&s->lint1_nmi_deasserted&&s->apic.lvt[i]==0x400))return false;
  for(unsigned i=0;i<8;i++)if(s->apic.irq.irr[i]||s->apic.irq.isr[i]||s->apic.tmr[i]||s->apic.pending_level[i])return false;
  return true;
 }
+bool fag_lint0_route_enable(struct fag_state*s){
+ if(!fag_valid(s)||!s->lint0_extint_deasserted||s->lint0_extint_routed||s->apic.lvt[3]!=0x700||!(s->apic.irq.svr&0x100))return false;
+ s->lint0_extint_deasserted=false;s->lint0_extint_routed=true;return fag_valid(s);
+}
 bool fag_lint0_quiet_enable(struct fag_state*s){
- if(!fag_valid(s)||s->lint0_extint_deasserted||s->apic.lvt[3]!=MASK)return false;
+ if(!fag_valid(s)||s->lint0_extint_deasserted||s->lint0_extint_routed||s->apic.lvt[3]!=MASK)return false;
  s->lint0_extint_deasserted=true;return true;
 }
 bool fag_host_events_exit(uint64_t pin){return !(pin>>32)&&(pin&9)==9;}
@@ -41,9 +45,10 @@ bool fag_mmio(struct fag_state*s,uint64_t off,unsigned width,bool write,uint32_t
   * Nonzero initial-count remains rejected above, even masked. */
  /* P6-shaped firmware SVR: low nibble is fixed ones. Spurious-vector
   * programming is distinct from accepting an external interrupt vector.
-  * No source/events are permitted by fag_valid; delivery remains unsupported. */
+  * LAPIC IRR/ISR delivery remains outside this guard. A routed ExtINT uses
+  * the caller-owned PIC and does not create a LAPIC ISR/EOI obligation. */
  if(write && off==0x350 && value==0x700) {
-  if(width!=4||!s->lint0_extint_deasserted)return false;
+  if(width!=4||!(s->lint0_extint_deasserted||s->lint0_extint_routed))return false;
   n.apic.lvt[3]=value;if(!fag_valid(&n))return false;
   *s=n;return true;
  }

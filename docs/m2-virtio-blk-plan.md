@@ -1,5 +1,22 @@
 # M2 virtual storage: isolated implementation plan
 
+Guest GOP, Linux EFI framebuffer handoff and host presentation are now
+accepted alongside the Ring3/disk lifecycle. This closes the prior display
+gap of the fixed milestone-2 profile. See [firmware-graphics.md](firmware-graphics.md).
+
+Ring3 lifecycle management of the UEFI + writable disk runtime is also
+accepted as of 2026-11-18: same-guest STOP/START, destroy/recreate with persisted
+data, and complete PMM/VMX/EPT recovery. See [firmware-managed.md](firmware-managed.md).
+
+Writable virtio-blk, Linux ext2 disk root and data retention across a fresh-VM
+restart are accepted as of2026-11-18. See
+[firmware-persistent-disk.md](firmware-persistent-disk.md).
+
+For native disk/FAT/EFI execution and interactive Linux Shell acceptance as of
+2026-11-18, see [firmware-disk.md](firmware-disk.md). The text below preserves
+the earlier design and its original status; serial now uses 00:02.0 and disk
+uses 00:03.0.
+
 Status: design/static audit and host-only model, 2026-11-13. No device, native boot or Linux
 storage test is claimed by this document. This does not change the observer,
 firmware candidate, direct-loader baseline, or default runtime path.

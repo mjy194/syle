@@ -32,7 +32,7 @@ enum fat_result fiap_mmio(struct fag_state*d,struct ftis_session*s,uint64_t g[15
   uint64_t elapsed=(s->owner.last-s->owner.origin)*10;
   if(s->owner.deadline_bus<=elapsed)return FAT_REJECTED;
   uint64_t count=s->owner.deadline_bus-elapsed;if(count>UINT32_MAX)return FAT_REJECTED;
-  v=off==0x320?0x20020:off==0x380?10000000:off==0x3e0?0xb:(uint32_t)count;
+  v=off==0x320?(s->owner.masked?0x30020:0x20020):off==0x380?10000000:off==0x3e0?0xb:(uint32_t)count;
  }else if(!guest_apic_mmio(&p,off,4,plan.write,&v,0,&effect))return FAT_REJECTED;
  if(effect.level||(effect.eoi&&effect.vector!=32)||
  (eoi&&effect.eoi!=s->owner.in_service))return FAT_REJECTED;

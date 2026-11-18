@@ -3,10 +3,23 @@
 /* Explicit wire bytes, independent of host endianness. File directory is a
  * BE32 zero count, not an invented empty e820 memory map. */
 static const uint8_t signature[]={0x51,0x45,0x4d,0x55};
+#ifdef FFC_RAMFB
+static const uint8_t revision[]={3,0,0,0};
+#else
 static const uint8_t revision[]={1,0,0,0}; /* DMA bit1 absent */
+#endif
 static const uint8_t ram_size[]={0,0,0,8,0,0,0,0}; /* LE64 128MiB */
 static const uint8_t cpus[]={1,0};
+#ifdef FFC_BOOT_MENU_DEFAULT
+static const uint8_t boot_menu_default[]={0,0};
+#endif
+#ifdef FFC_RAMFB
+static const uint8_t directory[68]={0,0,0,1,0,0,0,28,0,0x20,0,0,'e','t','c','/','r','a','m','f','b'};
+static const uint8_t ramfb[28]={0};
+#endif
+#ifndef FFC_RAMFB
 static const uint8_t directory[]={0,0,0,0};
+#endif
 #ifdef FFC_NO_KERNEL_BLOBS
 /* No externally supplied setup/kernel/initrd/cmdline payload in this profile. */
 static const uint8_t no_blob_size[]={0,0,0,0}; /* LE32 */
@@ -18,6 +31,12 @@ static const uint8_t*item(uint16_t selector,size_t*n){
  case 3:*n=sizeof ram_size;return ram_size;
  case 5:case 0xf:*n=sizeof cpus;return cpus;
  case 0x19:*n=sizeof directory;return directory;
+#ifdef FFC_RAMFB
+ case 0x20:*n=sizeof ramfb;return ramfb;
+#endif
+#ifdef FFC_BOOT_MENU_DEFAULT
+ case 0xe:*n=sizeof boot_menu_default;return boot_menu_default;
+#endif
 #ifdef FFC_NO_KERNEL_BLOBS
  case 0x17:case 8:case 0xb:case 0x14:*n=sizeof no_blob_size;return no_blob_size;
 #endif

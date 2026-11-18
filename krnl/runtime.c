@@ -37,9 +37,17 @@ static void serial_probe(void) {
     out8(0x3fb, 3); out8(0x3fa, 0xc7); out8(0x3fc, 0x0b);
     uart_present = 1;
 }
+#ifdef SYLE_CONSOLE_SERIAL_DRAIN
+static unsigned serial_poll_budget=1000000;
+/* Only after guest execution has stopped: socket transport may be descheduled
+ * while the bounded diagnostic dump drains. Never changes VMX/guest budgets. */
+void log_serial_drain_mode(void){serial_poll_budget=1000000;if(!uart_present)serial_probe();}
+#else
+#define serial_poll_budget 10000u
+#endif
 static void serial_putc(char c) {
     if (!uart_present) return;
-    for (unsigned i = 0; i < 10000; ++i) {
+    for (unsigned i = 0; i < serial_poll_budget; ++i) {
         if (in8(0x3fd) & 0x20) { out8(0x3f8, (uint8_t)c); return; }
     }
     uart_present = 0; /* One exhausted polling budget disables the channel. */

@@ -225,7 +225,11 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
         const UINTN maximum = SG_MAX_IMAGE;
 #else
     if (boot.mode == SYLE_BOOT_NORMAL) {
+        #ifdef SYLE_FIRMWARE_DISK
+        const UINTN maximum = 64u * 1024u * 1024u;
+#else
         const UINTN maximum = 64 * 1024;
+#endif
 #endif
         void *program = NULL;
         status = uefi_call_wrapper(bs->AllocatePool, 3, EfiLoaderData, maximum, &program);
@@ -234,7 +238,11 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
 #ifdef SIMPLE_GUEST_PROTOTYPE
         status = read_file(ctx, L"\\syle\\guest.elf", program, maximum, &size);
 #else
+        #ifdef SYLE_FIRMWARE_DISK
+        status = read_file(ctx, L"\\syle\\disk.img", program, maximum, &size);
+#else
         status = read_file(ctx, L"\\syle\\mgmt.elf", program, maximum, &size);
+#endif
 #endif
         if (EFI_ERROR(status) || !size) {
 #ifdef SIMPLE_GUEST_PROTOTYPE

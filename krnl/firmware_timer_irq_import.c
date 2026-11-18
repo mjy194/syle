@@ -2,7 +2,7 @@
 static bool fresh(const struct fti_owner*s){
  return s&&!s->domain&&!s->origin&&!s->last&&!s->max_gap&&!s->deadline_bus&&
  !s->expirations&&!s->generation&&!s->token&&!s->reserved_expirations&&
- !s->ready&&!s->pending&&!s->reserved&&!s->in_service&&!s->terminal;
+ !s->ready&&!s->pending&&!s->reserved&&!s->in_service&&!s->terminal&&!s->masked;
 }
 static bool fail(struct fti_import_gate*g){if(g)g->failed=true;return false;}
 bool fti_import_once(struct fti_import_gate*g,struct fti_owner*out,const struct ft100*s,

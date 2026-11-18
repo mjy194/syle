@@ -34,10 +34,26 @@ __attribute__((noreturn)) void syle_main(const struct syle_boot_info *boot) {
         panic("PMM ALLOC/FREE SELFTEST FAILED");
     paging_init(boot);
 #ifdef SYLE_FIRMWARE_PROBE
+#ifdef SYLE_FIRMWARE_DISK
+    extern bool firmware_disk_bind(const void*,size_t);
+    if(!firmware_disk_bind(paging_phys_to_virt(boot->user_image.base),(size_t)boot->user_image.size))panic("INVALID FIRMWARE DISK");
+#endif
+#ifdef SYLE_FIRMWARE_MANAGED
+#ifdef SYLE_FIRMWARE_GRAPHICS
+    extern bool firmware_display_bind(const struct syle_framebuffer*);
+    extern void log_output_mode(unsigned);
+    if(!firmware_display_bind(&boot->framebuffer))panic("GUEST DISPLAY TARGET UNAVAILABLE");
+    log_output_mode(1);
+#endif
+    extern bool firmware_managed_install(void);
+    if(!firmware_managed_install())panic("FIRMWARE MANAGEMENT BACKEND UNAVAILABLE");
+    ring3_start(boot);
+#else
     extern bool firmware_probe_run(void);
     bool firmware_ok = firmware_probe_run();
     __asm__ volatile("outl %0,%1" : : "a"(firmware_ok ? 0x10u : 0x11u), "Nd"((UINT16)0xf4));
     for (;;) __asm__ volatile("cli; hlt");
+#endif
 #endif
 #if defined(LINUX_FIRST_EXIT_RECOVERY) || defined(LINUX_CR_RECOVERY) || defined(LINUX_PF_RECOVERY)
 #if defined(LINUX_PF_RECOVERY)

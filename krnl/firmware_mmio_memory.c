@@ -1,7 +1,9 @@
 #include "firmware_mmio_memory.h"
 static bool canonical(uint64_t x){return (x>>47)==0||(x>>47)==0x1ffff;}
 /* Only separately admitted IRQ DE profile; default binary mask unchanged. */
-#ifdef SYLE_FMM_DE_CONFIG
+#ifdef SYLE_FIRMWARE_BOOT_LINUX
+#define FMM_CR4_ALLOWED UINT64_C(0x26f8)
+#elif defined(SYLE_FMM_DE_CONFIG)
 #define FMM_CR4_ALLOWED UINT64_C(0x2668)
 #else
 #define FMM_CR4_ALLOWED UINT64_C(0x2660)
@@ -9,9 +11,19 @@ static bool canonical(uint64_t x){return (x>>47)==0||(x>>47)==0x1ffff;}
 static bool mode(const struct fmm_memory*m){return m&&m->memory&&m->memory->prepared&&!m->memory->quarantined&&m->memory->owner.map&&
  (m->cr0&0x80000031)==0x80000031&&!(m->cr0&~UINT64_C(0x8005003b))&&
  (m->cr4&32)&&!(m->cr4&~FMM_CR4_ALLOWED)&&
+
+#ifdef SYLE_FIRMWARE_BOOT_LINUX
+ (m->efer&~UINT64_C(1))==0x500&&
+#else
  m->efer==0x500&&
- !(m->cr3&~UINT64_C(0xfffff018))&&!m->cs_base&&m->cs_selector&&!(m->cs_selector&7)&&
- (m->cs_ar&~1u)==0xa09a;}
+#endif
+ !(m->cr3&~UINT64_C(0xfffff018))&&!m->cs_base&&m->cs_selector&&
+#ifdef SYLE_FIRMWARE_BOOT_LINUX
+ (((m->cs_selector&7)==0&&(m->cs_ar&~1u)==0xa09a)||((m->cs_selector&7)==3&&(m->cs_ar&~1u)==0xa0fa));
+#else
+ !(m->cs_selector&7)&&(m->cs_ar&~1u)==0xa09a;
+#endif
+}
 static bool read64(const struct fmm_memory*m,uint64_t p,uint64_t*out){
  if(p>FWM_RAM_SIZE-8)return false;
  if(!fwm_owned_page(m->memory,m->memory->ram[p/4096]))return false;
@@ -27,6 +39,9 @@ static bool translate(const struct fmm_memory*m,uint64_t va,enum fmm_access acce
   if(!read64(m,table+((va>>shift)&511)*8,&e)||!(e&1)||!(e&32)||
      (e&UINT64_C(0xffffffff00000000)))return false;
   rw=rw&&!!(e&2);user=user&&!!(e&4);
+#ifdef SYLE_FIRMWARE_BOOT_LINUX
+  if((m->cs_selector&3)==3&&!user)return false;
+#endif
   if(access==FMM_WRITE&&!rw&&(m->cr0&(1u<<16)))return false;
   bool huge=(e&128)&&level==2;
   if((e&128)&&level<2)return false;
@@ -123,6 +138,60 @@ bool fmm_validate_vars_write(const struct fmm_memory*m,uint64_t va,unsigned widt
  if(!translate(m,va,FMM_WRITE,&p,&attrs)||p!=gpa||
  (m->advanced_ept_info?((q&0x600)!=attrs):!!(q&0x400)))return false;
  return vars_token(m->memory,gpa,&token);
+}
+
+/* CODE is RX, unlike the R-only VARS contract. Never use diagnostic output
+ * as admission: prove the actual owned EPT chain for every transaction. */
+static bool code_token(const struct firmware_memory*f,uint64_t gpa,uint64_t*out){
+ if(!f||!f->prepared||f->quarantined||!f->owner.map||!out||
+ f->layout.ram.base||f->layout.ram.size!=FWM_RAM_SIZE||
+ f->layout.vars.base!=UINT64_C(0xffc00000)||f->layout.vars.size!=540672||
+ f->layout.code.base!=UINT64_C(0xffc84000)||f->layout.code.size!=3653632||
+ f->flash_pages!=1024||f->layout.code.kind!=FWL_ROM_CODE||!f->layout.code.read||f->layout.code.write||!f->layout.code.execute||
+ !fwl_contains(&f->layout.code,gpa,1)||f->eptp!=(f->tables[0]|0x1e))return false;
+ uint64_t index=(gpa-f->layout.vars.base)/4096;
+ uint64_t token=f->flash[index];if(!fwm_owned_page(f,token))return false;
+ for(unsigned i=0;i<FWM_RAM_PAGES;i++)if(f->ram[i]==token)return false;
+ for(unsigned i=0;i<FWM_FLASH_PAGES;i++)if(i!=index&&f->flash[i]==token)return false;
+ for(unsigned i=0;i<FWM_TABLE_PAGES;i++)if(f->tables[i]==token)return false;
+ unsigned slots[]={0,1,3,68+(unsigned)((gpa-UINT64_C(0xffc00000))>>21)};
+ unsigned shifts[]={39,30,21,12};
+ for(unsigned level=0;level<4;level++){
+  uint64_t pa=f->tables[slots[level]];if(!fwm_owned_page(f,pa))return false;
+  for(unsigned earlier=0;earlier<level;earlier++)if(pa==f->tables[slots[earlier]])return false;
+  const uint8_t*p=f->owner.map(f->owner.context,pa);if(!p||((uintptr_t)p&4095))return false;
+  unsigned off=(unsigned)((gpa>>shifts[level])&511)*8;uint64_t entry=0;
+  for(unsigned i=0;i<8;i++)entry|=(uint64_t)p[off+i]<<(i*8);
+  uint64_t expected=level==3?(token|0x35):(f->tables[slots[level+1]]|7);
+  if(entry!=expected)return false;
+ }
+ *out=token;return true;
+}
+bool fmm_read_code_byte(const struct firmware_memory*f,uint64_t gpa,uint8_t*out){
+ uint64_t token;if(!out||!code_token(f,gpa,&token))return false;
+ const uint8_t*p=f->owner.map(f->owner.context,token);if(!p||((uintptr_t)p&4095))return false;
+ *out=p[gpa&4095];return true;
+}
+bool fmm_code_probe_candidate(const struct firmware_memory*f,uint64_t*address,uint8_t*original){
+ if(!f||!address||!original)return false;
+ /* Scan the first erase block; validate/map once per page, not per byte. */
+ for(unsigned offset=0;offset<65536;offset+=4096){
+  uint64_t gpa=UINT64_C(0xffc84000)+offset,token;
+  if(!code_token(f,gpa,&token))return false;
+  const uint8_t*p=f->owner.map(f->owner.context,token);if(!p||((uintptr_t)p&4095))return false;
+  for(unsigned i=0;i<4096;i++)if(p[i]!=0&&p[i]!=0x50&&p[i]!=0x70){
+   *address=gpa+i;*original=p[i];return true;
+  }
+ }
+ return false;
+}
+bool fmm_validate_code_write(const struct fmm_memory*m,uint64_t va,unsigned width,
+ uint32_t reason,uint64_t q,uint64_t gla,uint64_t gpa,uint32_t vector){
+ if(!mode(m)||width!=1||reason!=48||vector||va!=gla||(q&~UINT64_C(0x400))!=0x1aa)return false;
+ uint64_t p,attrs=0,token;
+ if(!translate(m,va,FMM_WRITE,&p,&attrs)||p!=gpa||
+ (m->advanced_ept_info?((q&0x600)!=attrs):!!(q&0x400)))return false;
+ return code_token(m->memory,gpa,&token);
 }
 
 /* Diagnostic duplicate of VARS admission, not an alternate execution gate.

@@ -15,7 +15,7 @@ bool fti_sample(struct fti_owner*s,uint64_t d,uint64_t r){
   uint64_t k=(elapsed-s->deadline_bus)/FTI_PERIOD_BUS+1;
   if(k>(UINT64_MAX-s->deadline_bus)/FTI_PERIOD_BUS||
      k>UINT64_MAX-s->expirations)return fail(s);
-  s->deadline_bus+=k*FTI_PERIOD_BUS;s->expirations+=k;s->pending=true;
+  s->deadline_bus+=k*FTI_PERIOD_BUS;s->expirations+=k;if(!s->masked)s->pending=true;
  }
  s->last=r;return true;
 }
@@ -37,7 +37,7 @@ bool fti_cancel(struct fti_owner*s,uint64_t t,bool clean){
 }
 bool fti_account(struct fti_owner*s,uint64_t t,bool clean){
  if(!owned(s,t,clean))return false;
- s->pending=s->expirations>s->reserved_expirations;
+ s->pending=!s->masked&&s->expirations>s->reserved_expirations;
  s->in_service=true;s->reserved=false;s->token=0;s->reserved_expirations=0;
  return true;
 }
@@ -45,5 +45,10 @@ bool fti_eoi(struct fti_owner*s){
  if(!live(s))return false;
  if(s->reserved)return fail(s);
  s->in_service=false;return true;
+}
+bool fti_mask(struct fti_owner*s,bool masked){
+ if(!live(s))return false;
+ if(s->reserved)return fail(s);
+ s->masked=masked;return true;
 }
 void fti_quarantine(struct fti_owner*s){(void)fail(s);}
