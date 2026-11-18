@@ -73,6 +73,21 @@ int main(void) {
     ok(call(&s,NVMX_CLEAR,0x2000,0,0));assert(!s.launched&&!s.poisoned);
     ok(call(&s,NVMX_PTRLD,0x2000,0,0));ok(call(&s,NVMX_CLEAR,0x2000,0,0));
     assert(call(&s,NVMX_PTRST,0,0,0).value==NVMX_NONE);
+    /* A new KVM vCPU may get a different page from the same L1. Fresh
+     * pages start empty; reloading the cleared old page preserves its fields. */
+    uint64_t old_fields[NVMX_FIELDS];
+    memcpy(old_fields,s.fields,sizeof old_fields);
+    assert(!nvmx_bind_cleared(&s,s.on_region,NULL));
+    assert(nvmx_bind_cleared(&s,0x3000,NULL));
+    ok(call(&s,NVMX_CLEAR,0x3000,0,0));ok(call(&s,NVMX_PTRLD,0x3000,0,0));
+    assert(call(&s,NVMX_READ,0,0x681e,0).value==0);
+    assert(!nvmx_bind_cleared(&s,0x2000,old_fields));
+    ok(call(&s,NVMX_CLEAR,0x3000,0,0));
+    assert(nvmx_bind_cleared(&s,0x2000,old_fields));
+    ok(call(&s,NVMX_PTRLD,0x2000,0,0));
+    assert(call(&s,NVMX_READ,0,0x681e,0).value==0x6123);
+    err(call(&s,NVMX_RESUME,0,0,0),5);
+    ok(call(&s,NVMX_CLEAR,0x2000,0,0));
     ok(call(&s,NVMX_OFF,0,0,0));assert(!s.poisoned);
     puts("PASS N0 software VMX state/flags/error/VMCS12/entry transaction; no hardware nesting");
 }

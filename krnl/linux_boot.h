@@ -3,7 +3,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#ifndef LB_RAM_SIZE
 #define LB_RAM_SIZE (128ull*1024*1024)
+#endif
 struct lb_writer { void *context; bool (*write)(void*,uint64_t,const void*,size_t); bool (*zero)(void*,uint64_t,size_t); };
 struct lb_plan { uint64_t ram_size,kernel_addr,kernel_size,kernel_envelope,initrd_addr,initrd_size,params_addr,cmdline_addr,entry_addr,payload_offset,cmdline_size; };
 struct lb_entry_state { uint64_t rip,rsi,rsp,cr0,cr3,cr4,efer,gdt_base; uint16_t gdt_limit,cs,ds; };

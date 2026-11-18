@@ -21,6 +21,12 @@
 #include "firmware_observer_stack.h"
 #include "firmware_debug_read.h"
 static struct fdr_bank debug_bank;
+#ifdef SYLE_M2_NESTED
+#include "nested_vmx.h"
+static bool nested_enabled;
+static struct nvmx nested_vmcs;
+static uint64_t nested_last_field;
+#endif
 #ifdef SYLE_FIRMWARE_DISK
 static bool disk_pic_active,disk_pic_window;
 static bool disk_tick(void);
@@ -301,7 +307,20 @@ static bool de_gate(struct fcmd_gate*g){
  g->primary_controls<=UINT32_MAX&&g->entry_controls<=UINT32_MAX&&g->exit_controls<=UINT32_MAX&&bitmap<=UINT32_MAX&&(!disk_pic_active||bitmap==0x42);
 }
 static bool de_mode_write(enum fcm_register reg,uint64_t value,struct fcm_state*out){
- struct fcmd_gate gate;return de_gate(&gate)&&fcmd_write(&mode,mem.layout.ram.size,reg,value,&gate,out);
+ struct fcmd_gate gate;
+ struct fcm_state base=mode;
+#ifdef SYLE_M2_NESTED
+ uint64_t vmxe=(reg==FCM_CR4?value:base.cr4)&0x2000;
+ if(vmxe&&!nested_enabled)return false;
+ if(!vmxe&&nested_vmcs.root)return false;
+ base.cr4&=~UINT64_C(0x2000);
+ if(reg==FCM_CR4)value&=~UINT64_C(0x2000);
+#endif
+ if(!de_gate(&gate)||!fcmd_write(&base,mem.layout.ram.size,reg,value,&gate,out))return false;
+#ifdef SYLE_M2_NESTED
+ out->cr4|=vmxe;
+#endif
+ return true;
 }
 static bool irq_identity(void){
  struct fcmd_gate gate;if(!de_gate(&gate))return false;
@@ -620,6 +639,9 @@ static bool pause_dispatch(void){
 #ifdef SYLE_FIRMWARE_DISK
 #include "firmware_persistent_observe.inc"
 #endif
+#ifdef SYLE_M2_NESTED
+#include "firmware_kvm_init.inc"
+#endif
 static bool dispatch(uint64_t reason){
  uint64_t rip,len,q,vector,cs;
  if(!traced_rd(0x681e,&rip)||!traced_rd(0x440c,&len)||!traced_rd(0x6400,&q)||!traced_rd(0x4408,&vector))return false;
@@ -664,6 +686,26 @@ static bool dispatch(uint64_t reason){
  if(reason==28&&(q&15)==8){if(len>15)return false;return irq_cr8_access(rip,q,(unsigned)len,flags,blocking,pending_debug,(uint32_t)vector);}
  if((flags&(UINT64_C(1)<<8))||((flags&(UINT64_C(1)<<16))&&reason!=48)||blocking||pending_debug){log_text("OVMF.CLOCK_APIC reject=instruction_state\n");return false;}
 #ifdef SYLE_FIRMWARE_DISK
+#ifdef SYLE_M2_NESTED
+ if(nested_enabled&&((reason>=19&&reason<=27)||reason==50))return nested_root_instruction(reason,rip,len,q,flags);
+ if(nested_enabled && reason==31 && (uint32_t)native.gpr[2]==0x1d9 && len==2){
+  uint64_t debugctl;
+  if(!rd(0x2802,&debugctl)||debugctl)return false;
+  native.gpr[0]=0;native.gpr[3]=0;
+  return wr(0x681e,rip+len);
+ }
+ if(nested_enabled && reason==31 && (uint32_t)native.gpr[2]==0x277 && len==2){
+  /* M2 keeps the reset PAT layout; no guest PAT writes are accepted. */
+  native.gpr[0]=native.gpr[3]=0x00070406;
+  return wr(0x681e,rip+len);
+ }
+ if(nested_enabled && reason==31 && (uint32_t)native.gpr[2]>=0x480 && (uint32_t)native.gpr[2]<=0x492){
+  uint64_t value;
+  if(len!=2 || !nested_capability(native.gpr[2],&value))return false;
+  native.gpr[0]=(uint32_t)value;native.gpr[3]=value>>32;
+  return wr(0x681e,rip+len);
+ }
+#endif
  if(reason==31&&(uint32_t)native.gpr[2]==0xce)return disk_inject_gp(rip,(unsigned)len);
  if(reason==14)return disk_invlpg(rip,q,(unsigned)len);
  if((reason==31||reason==32)&&disk_linux_msr_supported((uint32_t)native.gpr[2]))return disk_gs_msr(rip,(unsigned)reason,(unsigned)len);
@@ -1047,6 +1089,9 @@ if(!pm_delay_quiet){
   if(len!=2)return false;
   struct fcp_result r;
   if(!fcats_query(&cpu,tsc_source_ready(),(uint32_t)native.gpr[0],(uint32_t)native.gpr[2],&r))return false;
+#ifdef SYLE_M2_NESTED
+  if(nested_enabled && (uint32_t)native.gpr[0]==1)r.c|=1u<<5;
+#endif
   native.gpr[0]=r.a;native.gpr[1]=r.b;native.gpr[2]=r.c;native.gpr[3]=r.d;
   log_text("OVMF.CLOCK_APIC CPUID minimal startup profile\n");
  }else if(reason==28){
@@ -1096,7 +1141,20 @@ if(!pm_delay_quiet){
    if(reason==31){native.gpr[0]=(uint32_t)value;native.gpr[3]=(uint32_t)(value>>32);}
    return true;
   }
-  if((uint32_t)native.gpr[2]!=0xc0000080)return false;
+  if((uint32_t)native.gpr[2]!=0xc0000080){
+#ifdef SYLE_M2_NESTED
+   /* Unsupported MSRs fault in L1; they never reach host RDMSR/WRMSR. */
+   if(nested_enabled && disk_pic_active && len==2 && !disk_gp.pending && !disk_pic_run.inflight &&
+      !irq_session.active_attempt && !halt_state.halted){
+    uint64_t event;
+    if(!rd(0x4016,&event)||event||!wr(0x4018,0)||!wr(0x401a,0)||
+       !wr(0x6820,flags|0x10000)||!wr(0x4016,0x80000b0d))return false;
+    disk_gp.pending=true;
+    return true;
+   }
+#endif
+   return false;
+  }
   if(reason==31){native.gpr[0]=(uint32_t)mode.efer;native.gpr[3]=(uint32_t)(mode.efer>>32);}
   else {struct fcm_state n;uint64_t v=(uint32_t)native.gpr[0]|((uint64_t)(uint32_t)native.gpr[3]<<32);if(!fcp_efer_allowed(v)||!de_mode_write(FCM_EFER,v,&n)||!commit_mode(&n))return false;}
  }else return false;
@@ -1107,6 +1165,10 @@ static uint64_t fmg_observed,fmg_reason;
 static bool fmg_io_failed;
 static int fmg_failed_step(unsigned);
 static bool fmg_prepare_runtime(void){
+#ifdef SYLE_M2_NESTED
+ nested_vmcs=(struct nvmx){.vmcs_region=NVMX_NONE,.current=NVMX_NONE,.physical_bits=32};
+ nested_last_field=NVMX_NONE;
+#endif
  if(!foc_init(&observation_trace,observation_bytes,sizeof observation_bytes,0,observation_sink))return false;
  log_text("OVMF.CACHE_KVM nondefault_single_maintenance_fixture\n");
  log_text("OVMF.CLOCK_APIC begin NONDEFAULT timer32 IRQ experiment; host-tested ownership, native delivery unverified\n");
@@ -1227,6 +1289,26 @@ if(!pm_delay_quiet || gate!=FIW_WAIT || irq_session.owner.pending || irq_session
 #endif
   native.entry_status=UINT32_MAX;
   enum lvs_result result=lvs_run(&state,&state_ops);if(!safe())fatal();
+#ifdef SYLE_M2_NESTED
+  /* A register-only VMCS12 access with L1 interrupts disabled cannot
+   * consume a PIC event. Share an empty PIC reservation across a bounded
+   * burst. Every entry still saves/restores host state. Return the first
+   * other exit, including interrupt-window and preemption, to normal dispatch. */
+  if(nested_enabled&&nested_vmcs.active&&disk_pic_active&&!staged&&!windowed&&
+     !disk_pic_window&&!disk_gp_pending()&&!entered_halted){
+   for(unsigned burst=0;burst<8&&slice<63&&result==LVS_EXIT&&native.entry_status==1;burst++){
+    uint64_t reason,info,rflags;
+    if(!rd(0x4402,&reason)||(reason!=23&&reason!=25)||
+       !rd(0x440e,&info)||!(info&(1u<<10))||
+       !rd(0x6820,&rflags)||(rflags&0x200))break;
+    if(fmg_observed>=UINT64_MAX-1||!dispatch(reason))return fmg_failed_step(__LINE__);
+    fmg_observed++;slice++;
+    native.resume=1;native.entry_status=UINT32_MAX;
+    result=lvs_run(&state,&state_ops);
+    if(!safe())fatal();
+   }
+  }
+#endif
   uint64_t raw_reason=0,raw_vector=0,raw_interrupt=0;bool exit_fields=false;
   if(native.entry_status==1&&result==LVS_EXIT){
    exit_fields=rd(0x4402,&raw_reason)&&rd(0x4408,&raw_vector)&&rd(0x4404,&raw_interrupt)&&

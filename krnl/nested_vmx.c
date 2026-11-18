@@ -1,10 +1,15 @@
 #include "nested_vmx.h"
+#include <stddef.h>
 struct field {uint16_t encoding;uint8_t width;bool ro;};
 #define F(e,w) {e,w,false}
 #define R(e,w) {e,w,true}
 /* Explicit experimental VMCS12 contract; omitted real architectural fields
  * report UNSUPPORTED, not a false claim that the processor lacks them. */
 static const struct field fields[]={
+#ifdef SYLE_M2_NESTED
+ /* VMCS12 guest addresses only. The adapter never installs these in VMCS01. */
+ F(0x2006,64),F(0x2008,64),F(0x200a,64),F(0x2010,64),
+#endif
  F(0x800,16),F(0x802,16),F(0x804,16),F(0x806,16),F(0x808,16),F(0x80a,16),F(0x80c,16),F(0x80e,16),
  F(0xc00,16),F(0xc02,16),F(0xc04,16),F(0xc06,16),F(0xc08,16),F(0xc0a,16),F(0xc0c,16),
  F(0x201a,64),R(0x2400,64),F(0x2800,64),F(0x2802,64),F(0x2804,64),F(0x2806,64),F(0x2c00,64),F(0x2c02,64),
@@ -46,6 +51,19 @@ static struct nvmx_result result(struct nvmx *s,enum nvmx_status status,uint32_t
 bool nvmx_init(struct nvmx *s,uint64_t on,uint64_t vmcs,unsigned bits) {
     if(!s||bits<32||bits>52||on==vmcs||!address(on,bits)||!address(vmcs,bits)) return false;
     *s=(struct nvmx){.on_region=on,.vmcs_region=vmcs,.current=NVMX_NONE,.physical_bits=bits};
+    return true;
+}
+bool nvmx_bind_cleared(struct nvmx *s,uint64_t region,const uint64_t *saved) {
+    if(!s||!s->root||s->active||s->running||s->prepared||s->current!=NVMX_NONE||
+       region==s->on_region||!address(region,s->physical_bits)) return false;
+    for(unsigned i=0;i<COUNT;i++) {
+        uint64_t value=saved?saved[i]:0;
+        if(fields[i].width==16)value=(uint16_t)value;
+        if(fields[i].width==32)value=(uint32_t)value;
+        s->fields[i]=value;
+    }
+    s->vmcs_region=region;
+    s->launched=false;s->poisoned=false;s->initialized=saved!=NULL;
     return true;
 }
 struct nvmx_result nvmx_execute(struct nvmx *s,struct nvmx_request r) {

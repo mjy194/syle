@@ -67,10 +67,16 @@ static bool disk_gs_msr(uint64_t rip,unsigned reason,unsigned len){
  if(!fboot_query(&cpu,disk_clock_ready(),1,0,&basic)||!fboot_query(&cpu,disk_clock_ready(),0x80000001,0,&ext)||!rd(0x680e,&fs))return false;
  if(id>=0x174&&id<=0x176)return lse_apply(native.gpr,rip,0,reason,len,basic.d,ext.d,0,disk_read_field,0,pic_write);
  if(id==0x3a||id==0x140){
-  /* VMX/SMX/MONITOR/CPUID-faulting are not exposed in this fixed CPU. */
+  /* Feature-control is locked for the lifetime of this guest. */
   if(basic.c||basic.a!=0x600||(id==0x3a&&reason!=31)||(reason==32&&((uint32_t)native.gpr[0]||(uint32_t)native.gpr[3])))return false;
   if(!pic_write(0,0x681e,rip+len))return false;
-  if(reason==31){native.gpr[0]=id==0x3a?1:0;native.gpr[3]=0;}
+  if(reason==31){
+   native.gpr[0]=id==0x3a?1:0;
+#ifdef SYLE_M2_NESTED
+   if(id==0x3a&&nested_enabled)native.gpr[0]|=4; /* Locked, VMX permitted outside SMX. */
+#endif
+   native.gpr[3]=0;
+  }
   return true;
  }
  return lmbr_apply(native.gpr,rip,0,reason,len,basic.d,ext.d,fs,&state,0,pic_write);

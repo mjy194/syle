@@ -72,6 +72,9 @@ struct nested_ept_result nested_ept_walk(uint64_t eptp12, uint64_t l2_gpa,
 struct nested_ept_result nested_ept_walk_classified(uint64_t eptp12,uint64_t l2_gpa,
     uint8_t access,nested_ept_resolve_fn resolve,void *context,
     const struct nested_ept_policy *policy);
+struct nested_ept_result nested_ept_walk_memory_classified(uint64_t eptp12,uint64_t l2_gpa,
+    uint8_t access,nested_ept_resolve_fn resolve,void *context,
+    const struct nested_ept_policy *policy);
 /* Bounded three-repair diagnostic sequencing, separate from architectural
  * INVEPT validity. Shared sparse tests have a different checkpoint sequence. */
 static inline bool nested_misconfig_repair_pending(unsigned invalidations,unsigned exits) {

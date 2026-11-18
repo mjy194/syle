@@ -76,9 +76,22 @@ static bool instruction_byte(const struct fmm_memory*m,uint64_t p,uint8_t*out){
 }
 size_t fmm_fetch(const struct fmm_memory*m,uint64_t rip,uint8_t b[15]){
  if(!b)return 0;
- size_t n=0;for(;n<15;n++){
-  if(rip>UINT64_MAX-n)break;
-  uint64_t p;if(!fmm_translate(m,rip+n,FMM_EXEC,&p)||!instruction_byte(m,p,&b[n]))break;
+ size_t n=0;
+ while(n<15 && rip<=UINT64_MAX-n){
+  uint64_t p;
+  if(!fmm_translate(m,rip+n,FMM_EXEC,&p))break;
+  size_t count=4096-(p&4095);
+  if(count>15-n)count=15-n;
+  if(p<FWM_RAM_SIZE){
+   if(!fwm_owned_page(m->memory,m->memory->ram[p/4096])||
+      !fwm_read_ram(m->memory,p,b+n,count))break;
+   n+=count;
+  }else{
+   for(size_t i=0;i<count;i++){
+    if(!instruction_byte(m,p+i,&b[n]))return n;
+    n++;
+   }
+  }
  }
  return n;
 }

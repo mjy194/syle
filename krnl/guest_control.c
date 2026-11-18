@@ -31,7 +31,11 @@ static int64_t call_locked(struct guest_control *c, uint64_t op,
                             uint64_t handle, uint64_t arg) {
     if (op < SYLE_GUEST_CREATE || op > SYLE_GUEST_CONSOLE_SPACE) return ERR(EINVAL);
     if (op==SYLE_GUEST_CREATE) {
-        if (handle || arg!=SYLE_GUEST_BOOT_PROFILE) return ERR(EINVAL);
+        bool valid_profile=arg==SYLE_GUEST_BOOT_PROFILE;
+#ifdef SYLE_M2_NESTED
+        valid_profile|=arg==SYLE_GUEST_NESTED_BOOT_PROFILE;
+#endif
+        if (handle || !valid_profile) return ERR(EINVAL);
         if (!c->configured) return ERR(ENOTSUP);
         if (c->state!=SYLE_GUEST_EMPTY) return ERR(EBUSY);
         /* Never wrap/reuse handles during this controller lifetime. */

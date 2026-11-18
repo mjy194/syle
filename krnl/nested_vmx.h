@@ -32,6 +32,9 @@ struct nvmx_result nvmx_execute(struct nvmx *s,struct nvmx_request r);
 bool nvmx_peek(const struct nvmx *s,uint64_t field,uint64_t *value);
 struct nvmx_result nvmx_invept_result(struct nvmx *s,bool valid,uint64_t flags);
 bool nvmx_failed_entry_finish(struct nvmx *s,uint64_t reason,uint64_t qualification);
+/* Bind an inactive, cleared VMCS12 region. Only field values come from
+ * guest RAM; all lifecycle and physical ownership state stays in L0. */
+bool nvmx_bind_cleared(struct nvmx *,uint64_t region,const uint64_t *saved_fields);
 bool nvmx_entry_commit(struct nvmx *s);
 bool nvmx_entry_cancel(struct nvmx *s);
 struct nvmx_result nvmx_entry_fail(struct nvmx *s,uint32_t error,uint64_t flags);

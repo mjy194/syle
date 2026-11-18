@@ -26,3 +26,13 @@ For repeatable acceptance, add `--check` to the run command. This writes a fresh
 Two independent QEMU/KVM launches used the same writable backing file. Each launch created two guest generations and ended with management exit status zero. Evidence is under `efi/build/m2-run-v1/serial.log` (130 seconds of running idle) and `efi/build/m2-run-v2/serial.log` (5 seconds, randomized disk token). All four releases returned to 262 allocated pages, with VMX inactive and the EPT and disk adapter released. A read-only offline e2fsck of the second GPT partition after both launches returned zero. The built kernel passed the ELF loader contract. Display pixel verification for the base profile is recorded in [the graphics checkpoint](../docs/firmware-graphics.md).
 
 Each run recorded two L1 WBINVD attempts. With the preceding graphics checkpoint, the cumulative ledger is 85 observed plus one historical capture uncertainty, giving a conservative upper bound of 86. The idle interval exercised a running guest. The host clock's maximum sampling gap still bounds pause/resume.
+
+For the optional single-vCPU nested KVM profile, add
+`--nested` to the build command. The Ring3 menu then offers `n` for nested
+guest creation alongside `c` for ordinary creation. See the
+[L2 Linux direct64 acceptance](../experiments/m4-linux-kvm/README.md#single-vcpu-l2-linux-direct64).
+For an interactive L2 boot with the recovered 250 Hz kernel, use the
+[shell disk and serial instructions](../experiments/m4-linux-kvm/README.md#interactive-shell-on-the-original-250-hz-kernel).
+The [writable L2 disk profile](../experiments/m4-linux-kvm/README.md#l2-linux-with-a-writable-disk-root)
+boots Linux from ext2 on virtio-blk and checks a shell-written file across
+two L2 cold starts within one L1.

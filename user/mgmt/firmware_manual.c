@@ -11,7 +11,11 @@ static void print(const char *s) {
 void firmware_lifecycle_main(void) {
     int64_t handle=0;
     bool running=false, attached=false, failed=false;
-    const char *menu="\nM2 [c]reate [s]tart/resume [p]ause [a]ttach [d]estroy [q]uit\n";
+    const char *menu="\nM2 [c]reate "
+#ifdef SYLE_M2_NESTED
+        "[n]ested create "
+#endif
+        "[s]tart/resume [p]ause [a]ttach [d]estroy [q]uit\n";
     print(menu);
     for (;;) {
         if (running) {
@@ -36,8 +40,13 @@ void firmware_lifecycle_main(void) {
         } else if (attached) {
             attached=false;
             print(menu);
-        } else if (key=='c' && !handle) {
-            handle=syle_guest_call(SYLE_GUEST_CREATE,0,SYLE_GUEST_BOOT_PROFILE);
+        } else if (!handle && (key=='c'
+#ifdef SYLE_M2_NESTED
+                               || key=='n'
+#endif
+                               )) {
+            unsigned profile=key=='c'?SYLE_GUEST_BOOT_PROFILE:SYLE_GUEST_NESTED_BOOT_PROFILE;
+            handle=syle_guest_call(SYLE_GUEST_CREATE,0,profile);
             if (handle<=0) {syle_guest_call(SYLE_GUEST_REAP,0,0);handle=0;failed=true;break;}
             print("M2 ready\n");
         } else if (key=='s' && handle && !running) {

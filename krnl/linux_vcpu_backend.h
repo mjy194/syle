@@ -12,6 +12,7 @@ struct lvb_context { unsigned physical_bits; bool bound,active; uint64_t root,cu
  * converted to success or ownership release. CF/ZF failures retain state.
  * All reachable code must be general-registers-only, no-red-zone.
  */
+bool lvb_switch_current(struct lvb_context*,uint64_t from,uint64_t to);
 bool lvb_bind(struct lvb_context *,const struct sg_memory_ops *,struct lvh_ops *);
 /* Pure descriptor decoder for validation/tests. limit is inclusive, bytes
  * is the actual readable byte count; does not dereference hardware pointers. */

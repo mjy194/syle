@@ -75,6 +75,18 @@ static bool load(void*v,uint64_t p){
  if(bad)return false;
  c->current=p;return true;
 }
+/* Caller holds both exclusive VMCS pages on this pinned CPU. Leave the old
+ * VMCS active (and launched) so it can subsequently be resumed. */
+bool lvb_switch_current(struct lvb_context*c,uint64_t from,uint64_t to){
+ if(!usable(c)||!c->active||!physical(c,from)||!physical(c,to)||to==from||
+    to==c->root||c->current!=from||!vmxe())return false;
+ uint64_t actual;unsigned char bad;
+ __asm__ volatile("vmptrst %1;setna %0":"=qm"(bad),"=m"(actual)::"cc","memory");
+ if(bad||actual!=from)return false;
+ __asm__ volatile("vmptrld %1;setna %0":"=qm"(bad):"m"(to):"cc","memory");
+ if(bad)return false;
+ c->current=to;return true;
+}
 static bool write(void*v,uint32_t f,uint64_t value){
  struct lvb_context*c=v;if(!usable(c)||!c->active||!c->current||!vmxe())return false;
  unsigned char bad;__asm__ volatile("vmwrite %2,%1;setna %0":"=qm"(bad):"r"((uint64_t)f),"r"(value):"cc","memory");return !bad;

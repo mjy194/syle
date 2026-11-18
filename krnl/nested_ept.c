@@ -37,6 +37,12 @@ static struct nested_ept_result walk_core(uint64_t eptp12,uint64_t l2_gpa,
         }
         unsigned shift=12+9*(level-1);
         uint64_t entry=table[(l2_gpa>>shift)&0x1ff];
+#ifdef SYLE_M2_NESTED
+        /* L1 Linux uses architectural software-available EPT bits. Exclude
+         * these from the entry decoded by L0, never from the actual table. */
+        if(memory && ignore_ad0)
+            entry&=~((UINT64_C(0x7f)<<52)|(UINT64_C(1)<<11)|(UINT64_C(1)<<63));
+#endif
         uint8_t perm=(uint8_t)(entry&7);
         r.effective12 &= perm;
         /* Nonpresent ignores all remaining fields, including PS/reserved. */
@@ -162,4 +168,10 @@ struct nested_ept_result nested_ept_walk_classified(uint64_t eptp12,uint64_t l2_
     uint8_t access,nested_ept_resolve_fn resolve,void *context,
     const struct nested_ept_policy *policy) {
     return walk_core(eptp12,l2_gpa,access,resolve,context,policy,false,NULL,false,true,false,true);
+}
+
+struct nested_ept_result nested_ept_walk_memory_classified(uint64_t eptp12,uint64_t l2_gpa,
+    uint8_t access,nested_ept_resolve_fn resolve,void *context,
+    const struct nested_ept_policy *policy) {
+    return walk_core(eptp12,l2_gpa,access,resolve,context,policy,false,NULL,false,true,true,true);
 }

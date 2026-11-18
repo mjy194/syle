@@ -72,5 +72,12 @@ int main(void)
     assert(nested_ept_walk_classified(0x101e,0x123,1,resolve,0,&p).status==NESTED_EPT_MISCONFIG);
     assert(nested_ept_walk_classified(0x105e,0x123,1,resolve,0,&p).status==NESTED_EPT_UNSUPPORTED);
     assert(nested_ept_walk_classified(0x101e,1ull<<32,1,resolve,0,&p).status==NESTED_EPT_UNSUPPORTED);
+    init();tables[3][0]|=0x40;
+    r=nested_ept_walk_memory_classified(0x101e,0,1,resolve,0,&p);
+    assert(r.status==NESTED_EPT_OK&&r.memory_explicit&&r.ignore_pat&&r.leaf_type==6);
+    tables[3][0]=0x8002;
+    assert(nested_ept_walk_memory_classified(0x101e,0,1,resolve,0,&p).status==NESTED_EPT_MISCONFIG);
+    init();missing=true;
+    assert(nested_ept_walk_memory_classified(0x101e,0,1,resolve,0,&p).status==NESTED_EPT_L0_BACKING_DENIED);
     puts("nested_ept_classified: PASS");
 }
