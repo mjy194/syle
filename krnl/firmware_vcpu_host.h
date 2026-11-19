@@ -7,4 +7,6 @@
  * ownership, pinning, failure and native host-state contracts also apply.
  * Close with lvh_close; release firmware backing only after successful close. */
 bool fwh_open(struct lvh_context*,const struct lvh_ops*,const struct firmware_memory*,uint64_t,uint64_t);
+/* Caller owns the current, cleared VMCS on the same pinned CPU as context. */
+bool fwh_program_reset(struct lvh_context*,uint64_t rsp,uint64_t rip);
 #endif

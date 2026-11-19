@@ -19,15 +19,18 @@ static bool console_dispatch(uint64_t rip,uint64_t q,unsigned len){
  }
  return true;
 }
-static bool console_config(uint64_t rip,uint64_t q,unsigned len){
+static bool console_cpu_config(uint64_t g[15],uint64_t rip,uint64_t q,unsigned len){
  uint8_t b[15];unsigned available=(unsigned)io_instruction_fetch(rip,b);
- if(!fpp_encoding(q,len,b,available)||((q&64)==0&&(uint16_t)native.gpr[3]!=(uint16_t)(q>>16)))return false;
+ if(!fpp_encoding(q,len,b,available)||((q&64)==0&&(uint16_t)g[3]!=(uint16_t)(q>>16)))return false;
  unsigned size=q&7,width=size==3?4:size==1?2:1;
- struct fcon_state next=console_state;uint64_t value=native.gpr[0];
+ struct fcon_state next=console_state;uint64_t value=g[0];
  unsigned off=(pci.pci.address&252)+((q>>16)&3);
  if(!fcon_config(&next,off,width,(q&8)!=0,&value))return false;
  if(!pic_write(0,0x681e,rip+len)){console_state.failed=true;return false;}
- console_state=next;native.gpr[0]=value;return true;
+ console_state=next;g[0]=value;return true;
+}
+static bool console_config(uint64_t rip,uint64_t q,unsigned len){
+ return console_cpu_config(native.gpr,rip,q,len);
 }
 static bool console_poll(void){
  if(!console_state.command||console_state.failed||console_state.uart.rc||console_state.uart.mcr&16)return !console_state.failed;

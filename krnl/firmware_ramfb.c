@@ -11,13 +11,21 @@ bool frfb_io(struct frfb_state*s,struct ffc_state*f,uint16_t port,unsigned width
  uint64_t desc=((uint64_t)s->address_high<<32)|swap((uint32_t)*rax);uint8_t d[16],b[64];
  if(!owned(ctx,desc,16)||!read(ctx,desc,d,16))return false;
  uint32_t ctl=be32(d),n=be32(d+4);uint64_t target=be64(d+8);unsigned op=ctl&0xffff;
- if((op&~30u)||((op&2)!=0)+((op&4)!=0)+((op&16)!=0)!=1||n>sizeof b)return false;
+ if((op&~30u)||((op&2)!=0)+((op&4)!=0)+((op&16)!=0)!=1)return false;
  if(op&8){uint64_t key=ctl>>16;if(!ffc_io(f,0x510,2,false,&key))return false;}
  else if(ctl>>16)return false;
+ bool table_read=(op&2)&&f->cpu_count_le[0]==2&&(f->selector==0x19||f->selector==0x21||f->selector==0x22);
+ if(n>sizeof b&&(!table_read||n>384))return false;
  if((op&4)==0&&n&&(!owned(ctx,target,n)||overlap(desc,16,target,n)))return false;
  if(op&2){
-  for(unsigned i=0;i<n;i++){uint64_t v=0;if(!ffc_io(f,0x511,1,true,&v))return false;b[i]=(uint8_t)v;}
-  if(n&&!write(ctx,target,b,n))return false;
+  for(unsigned done=0;done<n;){
+   unsigned count=n-done,page_left=4096-(unsigned)((target+done)&4095);
+   if(count>sizeof b)count=sizeof b;
+   if(table_read&&count>page_left)count=page_left;
+   for(unsigned i=0;i<count;i++){uint64_t v=0;if(!ffc_io(f,0x511,1,true,&v))return false;b[i]=(uint8_t)v;}
+   if(!write(ctx,target+done,b,count))return false;
+   done+=count;
+  }
  }else if(op&4){
   for(unsigned i=0;i<n;i++){uint64_t v=0;if(!ffc_io(f,0x511,1,true,&v))return false;}
  }else{

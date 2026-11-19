@@ -9,7 +9,7 @@ static bool canonical(uint64_t x){return (x>>47)==0||(x>>47)==0x1ffff;}
 #define FMM_CR4_ALLOWED UINT64_C(0x2660)
 #endif
 static bool mode(const struct fmm_memory*m){return m&&m->memory&&m->memory->prepared&&!m->memory->quarantined&&m->memory->owner.map&&
- (m->cr0&0x80000031)==0x80000031&&!(m->cr0&~UINT64_C(0x8005003b))&&
+ (m->cr0&0x80000031)==0x80000031&&!(m->cr0&~(UINT64_C(0x8005003b)|(m->ap_startup_cache_state?UINT64_C(0x60000000):0)))&&
  (m->cr4&32)&&!(m->cr4&~FMM_CR4_ALLOWED)&&
 
 #ifdef SYLE_FIRMWARE_BOOT_LINUX

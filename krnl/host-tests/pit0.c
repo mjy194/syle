@@ -47,6 +47,17 @@ static void mode4_tests(void){
 }
 int main(void){
  mode4_tests();
+ struct pit0 terminal=timer(4);
+ put(&terminal,3,0x43,0x30);put(&terminal,3,0x40,2);put(&terminal,3,0x40,0);
+ uint64_t edge;bool level;uint16_t count;
+ assert(pit0_next_edge(&terminal,&edge)&&edge==6);
+ assert(pit0_advance(&terminal,5)&&pit0_count(&terminal,&count)&&count==1);
+ assert(pit0_output(&terminal,&level)&&!level);
+ assert(pit0_advance(&terminal,6)&&pit0_output(&terminal,&level)&&level&&terminal.edges==1);
+ assert(pit0_advance(&terminal,65550)&&terminal.edges==1&&!pit0_next_edge(&terminal,&edge));
+ put(&terminal,65550,0x43,0x30);
+ assert(!terminal.running&&pit0_output(&terminal,&level)&&!level);
+
  for(unsigned n=2;n<200;n++){
   struct pit0 a=timer(n),b=a;
   for(unsigned t=0;t<2000;t++){bool out;uint16_t count;assert(pit0_advance(&a,t));assert(pit0_output(&a,&out));assert(pit0_count(&a,&count));
@@ -60,5 +71,5 @@ int main(void){
  s=timer(2);s.edges=UINT64_MAX;old=s;assert(!pit0_advance(&s,3)&&!memcmp(&old,&s,sizeof s));
  s=timer(4);put(&s,0,0x40,6);put(&s,0,0x40,0);assert(s.reload==6&&!s.pending);assert(pit0_advance(&s,7)&&s.edges==1);
  s=timer(4);v=0;assert(pit0_access(&s,1,0x40,false,&v));old=s;v=0;assert(!pit0_access(&s,1,0x43,true,&v)&&!memcmp(&old,&s,sizeof s));
- puts("PIT0 mode2/mode4: count/OUT/edges differential, deferred reload, latch, fail atomic PASS; NOT runtime integrated");
+ puts("PIT0 modes 0, 2 and 4: count, OUT, edges, reload and latch PASS");
 }

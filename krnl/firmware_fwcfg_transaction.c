@@ -11,7 +11,7 @@ static bool dma_read(void*x,uint64_t a,void*b,unsigned n){struct fmm_memory*m=x;
 struct dma_context {const struct fmm_memory*m;uint64_t rip;};
 static bool dma_guarded_write(void*x,uint64_t a,const void*b,unsigned n){
  struct dma_context*c=x;struct fft_plan p;
- return dma_owned((void*)c->m,a,n)&&fft_prepare(c->m,a,n,c->rip,&p)&&fwm_write_ram(c->m->memory,a,b,n);
+ return dma_owned((void*)c->m,a,n)&&fft_prepare(c->m,a,n,c->rip,&p)&&p.gpa==a&&fwm_write_ram(c->m->memory,a,b,n);
 }
 static bool dma_guarded_read(void*x,uint64_t a,void*b,unsigned n){return dma_read((void*)((struct dma_context*)x)->m,a,b,n);}
 static bool dma_guarded_owned(void*x,uint64_t a,uint64_t n){return dma_owned((void*)((struct dma_context*)x)->m,a,n);}

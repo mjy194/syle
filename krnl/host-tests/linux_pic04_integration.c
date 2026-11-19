@@ -20,8 +20,32 @@ static bool reentrant_write(void*p,uint32_t f,uint64_t v){
  return wr(p,f,v);
 }
 static bool safe(void*p){(void)p;return true;}
+static void periodic_replay(void){
+ setup04();pic_init();
+ struct lpd_domain *domain=&dispatch.pic04;
+ domain->replay_periodic=true;
+ pit_init(4773);
+ uint64_t now=domain->timer.start+25*4773;
+ uint64_t before=domain->master.seen0;
+ assert(lpd_tick(domain,now)&&domain->timer.edges==before+25);
+ for(unsigned n=1;n<=25;n++){
+  struct pm04_ticket ticket;
+  assert(lpd_tick(domain,now)&&domain->master.seen0==before+n);
+  assert(pm04_reserve(&domain->master,&ticket)&&ticket.source==0);
+  assert(pm04_accept(&domain->master,&ticket));
+  uint8_t eoi=0x60;
+  assert(pm04_access(&domain->master,0x20,true,&eoi,true));
+ }
+ assert(lpd_tick(domain,now)&&!(domain->master.irr&1));
+ /* Long masking leaves a single latched edge and no periodic debt. */
+ uint8_t mask=255;
+ assert(pm04_access(&domain->master,0x21,true,&mask,true));
+ assert(lpd_tick(domain,now+25*4773));
+ assert(domain->master.seen0==domain->timer.edges&&(domain->master.irr&1));
+}
 int main(void){
  old_regression();
+ periodic_replay();
  /* Pure RX capacity: no FIFO overflow/IRQ/clock mutation and no entry races. */
  setup04();struct lgd_context capacity_before=dispatch;assert(lgd_space(&dispatch)==1&&!memcmp(&dispatch,&capacity_before,sizeof dispatch));
  assert(lgd_send(&dispatch,'A')==0);capacity_before=dispatch;assert(lgd_space(&dispatch)==0&&!memcmp(&dispatch,&capacity_before,sizeof dispatch));

@@ -8,6 +8,9 @@ struct lvn_context {
  bool enabled;
  _Alignas(8) uint64_t host_dr6;
  uint8_t host_gdtr[10],host_idtr[10];
+ volatile uint64_t *fault_slot;
+ uint32_t mxcsr_mask;
+ uint64_t entry_tsc,exit_tsc;
 };
 /* Exclusive pinned BSP, IF=0, no NMI xstate/MSR use, resident trusted buffers.
  * Compile all reachable C with general-registers-only/no-red-zone. No tracing.
@@ -20,6 +23,9 @@ struct lvn_context {
  * failure delivered as VM exit returns true; caller must inspect exit reason.
  */
 bool lvn_bind(struct lvn_context *,struct lvs_ops *);
+/* Pinned AP with private fatal fault/IST handling. */
+bool lvn_bind_ap(struct lvn_context *,struct lvs_ops *);
+bool lvn_read_ap_msr(uint32_t,uint64_t *);
 bool lvn_enter(void *);
 bool lvn_read_msr(void *,uint32_t,uint64_t *);
 bool lvn_write_msr(void *,uint32_t,uint64_t);

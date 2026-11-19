@@ -8,7 +8,11 @@ _Static_assert(offsetof(struct lvn_context,host_dr6)==152,"dr6 offset");
 _Static_assert(offsetof(struct lvn_context,host_gdtr)==160,"gdtr offset");
 _Static_assert(offsetof(struct lvn_context,host_idtr)==170,"idtr offset");
 volatile uint64_t lvn_armed_rip;
-static uint32_t mxcsr_mask=0xffbf;
+_Static_assert(offsetof(struct lvn_context,fault_slot)==184,"fault slot offset");
+_Static_assert(offsetof(struct lvn_context,entry_tsc)==200,"entry TSC offset");
+_Static_assert(offsetof(struct lvn_context,exit_tsc)==208,"exit TSC offset");
+static volatile uint64_t ap_armed_rip;
+static struct lvn_context ap_probe={.fault_slot=&ap_armed_rip};
 extern const uint8_t lvn_exception_hook_present __attribute__((weak));
 extern char lvn_rd_fault[],lvn_wr_fault[],lvn_fxsave_fault[],lvn_fxload_fault[],lvn_false[];
 extern char lvn_rsp_fault[],lvn_rip_fault[],lvn_early_fail[];
@@ -25,11 +29,13 @@ bool lvn_fault_fixup(unsigned vector,uint64_t *rip){
  if(!next)return false;
  lvn_armed_rip=0;*rip=next;return true;
 }
-static bool allowed(void){
+static bool allowed(const struct lvn_context *c){
  uint16_t cs;uint64_t flags;
  __asm__ volatile("mov %%cs,%0":"=r"(cs));if(cs&3)return false;
  __asm__ volatile("pushfq;pop %0":"=r"(flags));
- return !(flags&512)&&!lvn_armed_rip&& &lvn_exception_hook_present&&lvn_exception_hook_present==1;
+ return !(flags&0x600)&&
+  (c&&c->fault_slot==&ap_armed_rip?!ap_armed_rip:
+   !lvn_armed_rip&& &lvn_exception_hook_present&&lvn_exception_hook_present==1);
 }
 static bool listed(uint32_t n){
  for(unsigned i=0;i<LVS_MSR_COUNT;i++)if(n==lvs_msr_ids[i])return true;
@@ -47,38 +53,41 @@ static bool readable(uint32_t n){
  }
 }
 bool lvn_read_msr(void *ctx,uint32_t n,uint64_t *v){
- return v&&readable(n)&&allowed()&&lvn_read_raw(ctx,n,v);
+ return v&&readable(n)&&allowed(ctx)&&lvn_read_raw(ctx,n,v);
 }
 #ifdef MG_HOST_CLOCK
 /* Exact read-only Hyper-V reference counter. Caller verifies Hv#1 and feature
  * advertisement; reuse the armed #GP/#UD fixup, never a naked RDMSR. */
 bool lvn_read_clock_reference(uint64_t*v){
- return v&&allowed()&&lvn_read_raw(0,0x40000020,v);
+ return v&&allowed(0)&&lvn_read_raw(0,0x40000020,v);
 }
 #endif
+bool lvn_read_ap_msr(uint32_t n,uint64_t*v){
+ return lvn_read_msr(&ap_probe,n,v);
+}
 bool lvn_write_msr(void *ctx,uint32_t n,uint64_t v){
  struct lvn_context*c=ctx;
- return c&&c->enabled&&listed(n)&&allowed()&&lvn_write_raw(ctx,n,v);
+ return c&&c->enabled&&listed(n)&&allowed(c)&&lvn_write_raw(ctx,n,v);
 }
 static bool save(void*ctx,uint8_t*v){
  struct lvn_context*c=ctx;
- return c&&c->enabled&&v&&!((uintptr_t)v&15)&&allowed()&&lvn_save_raw(ctx,v);
+ return c&&c->enabled&&v&&!((uintptr_t)v&15)&&allowed(c)&&lvn_save_raw(ctx,v);
 }
 static bool load(void*ctx,const uint8_t*v){
  struct lvn_context*c=ctx;
- if(!c||!c->enabled||!v||((uintptr_t)v&15)||!allowed())return false;
+ if(!c||!c->enabled||!v||((uintptr_t)v&15)||!allowed(c))return false;
  uint32_t mx=(uint32_t)v[24]|((uint32_t)v[25]<<8)|((uint32_t)v[26]<<16)|((uint32_t)v[27]<<24);
- return !(mx&~mxcsr_mask)&&lvn_load_raw(ctx,v);
+ return !(mx&~c->mxcsr_mask)&&lvn_load_raw(ctx,v);
 }
 bool lvn_enter(void*ctx){
  struct lvn_context*c=ctx;
- return c&&c->enabled&&c->resume<=1&&allowed()&&lvn_enter_raw(ctx);
+ return c&&c->enabled&&c->resume<=1&&allowed(c)&&lvn_enter_raw(ctx);
 }
 static void cpuid(uint32_t leaf,uint32_t*a,uint32_t*b,uint32_t*c,uint32_t*d){
  __asm__ volatile("cpuid":"=a"(*a),"=b"(*b),"=c"(*c),"=d"(*d):"a"(leaf),"c"(0));
 }
-bool lvn_bind(struct lvn_context*c,struct lvs_ops*o){
- if(!c||!o||c->enabled||!allowed())return false;
+static bool bind(struct lvn_context*c,struct lvs_ops*o){
+ if(!c||!o||c->enabled||!allowed(c))return false;
  uint32_t a,b,x,d;cpuid(0,&a,&b,&x,&d);
  if(a<1||b!=0x756e6547||d!=0x49656e69||x!=0x6c65746e)return false;
  cpuid(1,&a,&b,&x,&d);
@@ -95,6 +104,15 @@ bool lvn_bind(struct lvn_context*c,struct lvs_ops*o){
  for(unsigned i=0;i<LVS_MSR_COUNT;i++)if(!lvn_read_msr(c,lvs_msr_ids[i],&value))return false;
  _Alignas(16) uint8_t fx[512]={0};if(!lvn_save_raw(c,fx))return false;
  uint32_t mask=(uint32_t)fx[28]|((uint32_t)fx[29]<<8)|((uint32_t)fx[30]<<16)|((uint32_t)fx[31]<<24);
- mxcsr_mask=mask?mask:0xffbf;
+ c->mxcsr_mask=mask?mask:0xffbf;
  c->enabled=true;*o=(struct lvs_ops){c,save,load,lvn_read_msr,lvn_write_msr,lvn_enter};return true;
+}
+bool lvn_bind(struct lvn_context*c,struct lvs_ops*o){
+ return c&&!c->fault_slot&&bind(c,o);
+}
+bool lvn_bind_ap(struct lvn_context*c,struct lvs_ops*o){
+ if(!c||c->enabled||c->fault_slot)return false;
+ c->fault_slot=&ap_armed_rip;
+ if(bind(c,o))return true;
+ c->fault_slot=0;return false;
 }

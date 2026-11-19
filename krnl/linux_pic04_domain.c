@@ -21,7 +21,7 @@ static bool canon(uint64_t x){return (x>>47)==0||(x>>47)==0x1ffff;}
 static bool irq4(void*p,unsigned irq,bool level){struct lpd_domain*d=p;return d&&irq==4&&pm04_level4(&d->master,d->master.domain,level);}
 void lpd_bind(struct lpd_domain*d){if(d){d->uart.irq_context=d;d->uart.sync_irq=irq4;}}
 bool lpd_valid(const struct lpd_domain*d){
- if(!d||d->failed||d->master.quarantined||d->slave.failed||!d->uart.ready||d->uart.busy||d->uart.irq_context!=d||d->uart.sync_irq!=irq4||d->master.seen0!=d->timer.edges||d->slave.master!=255)return false;
+ if(!d||d->failed||d->master.quarantined||d->slave.failed||!d->uart.ready||d->uart.busy||d->uart.irq_context!=d||d->uart.sync_irq!=irq4||(d->replay_periodic?d->master.seen0>d->timer.edges:d->master.seen0!=d->timer.edges)||d->slave.master!=255)return false;
  
  uint64_t period=uart_period(&d->uart.uart);
  if((!period&&d->uart_fraction)||(period&&d->uart_fraction>=period)||(!d->uart.uart.rc&&d->uart_fraction))return false;
@@ -40,8 +40,25 @@ bool lpd_sync(struct lpd_domain*d){if(!idle(d))return false;
  struct lpd_domain n=*d;lpd_bind(&n);if(lurt_retry_irq(&n.uart)!=LURT_COMMITTED||!lpd_valid(&n))return false;
  commit(d,&n);return true;}
 bool lpd_entry_ok(const struct lpd_domain*d,uint64_t flags){return lpd_valid(d)&&lpic_entry_ok(&d->slave,flags)&&!((d->master.phase||d->master.mask_pending)&&(flags&512))&&((d->master.imr&4)||d->master.mask_pending||d->slave.slave==255);}
+/* The PIT owns elapsed periods until it can present an edge to the PIC.
+ * Keep the normal single-bit PIC latch and its reservation protocol intact.
+ * Cancel deferred edges when the periodic source is stopped or reprogrammed. */
+static bool pit_edges(struct lpd_domain*d,uint64_t previous_edges){
+ struct pic_master_04 *pic=&d->master;
+ uint64_t edges=d->timer.edges;
+ if(d->replay_periodic&&d->timer.running&&!d->timer.mode0&&!d->timer.mode4&&pic->initialized){
+  if(pic->imr&1){
+   /* Masked edges coalesce in IRR. Carry only the debt accumulated
+    * while unmasked across a temporary mask during acknowledgement. */
+   edges=pic->seen0+(edges-previous_edges);
+  }else if(pic->seen0<edges){
+   edges=pic->seen0+!(pic->irr&1);
+  }
+ }
+ return pm04_edges0(pic,pic->domain,edges);
+}
 bool lpd_tick(struct lpd_domain*d,uint64_t tick){if(!idle(d))return false;
- struct lpd_domain n=*d;lpd_bind(&n);if(tick<n.timer.tick||!uart_clock(&n,tick-n.timer.tick)||!pit0_advance(&n.timer,tick)||!pm04_edges0(&n.master,n.master.domain,n.timer.edges)||!lpd_sync(&n))return false;
+ struct lpd_domain n=*d;lpd_bind(&n);if(tick<n.timer.tick||!uart_clock(&n,tick-n.timer.tick)||!pit0_advance(&n.timer,tick)||!pit_edges(&n,d->timer.edges)||!lpd_sync(&n))return false;
  commit(d,&n);return true;}
 static bool io_ok(uint64_t g[15],uint64_t rip,uint64_t q,unsigned len){return g&&!(q&~UINT64_C(0xffff0048))&&((q&64)?len==2:(len==1&&(uint16_t)g[3]==(q>>16)))&&canon(rip)&&rip<=UINT64_MAX-len&&canon(rip+len);}
 struct capture{unsigned count;uint64_t rip;};
@@ -66,7 +83,10 @@ bool lpd_pit_io(struct lpd_domain*d,uint64_t g[15],uint64_t rip,uint64_t q,unsig
  if(!idle(d)||!w||!io_ok(g,rip,q,len))return false;
  unsigned port=q>>16;if(port!=0x40&&port!=0x43)return false;
  
- struct lpd_domain n=*d;lpd_bind(&n);uint8_t v=g[0];if(!lpd_tick(&n,tick)||!pit0_access(&n.timer,tick,port,!(q&8),&v)||!pm04_edges0(&n.master,n.master.domain,n.timer.edges)||!w(x,0x681e,rip+len))return false;
+ struct lpd_domain n=*d;lpd_bind(&n);uint8_t v=g[0];
+ if(!lpd_tick(&n,tick))return false;
+ uint64_t before=n.timer.edges;
+ if(!pit0_access(&n.timer,tick,port,!(q&8),&v)||!pit_edges(&n,before)||!w(x,0x681e,rip+len))return false;
  
  commit(d,&n);if(q&8)g[0]=(g[0]&~UINT64_C(255))|v;return true;
 }

@@ -216,6 +216,10 @@ __attribute__((noreturn)) void ring3_start(const struct syle_boot_info *boot) {
     *(volatile unsigned char *)code = 0x90;
     panic("WX ALIAS WRITE WAS ALLOWED");
 #endif
+#ifdef SYLE_M2_HOST_PARALLEL
+    extern bool firmware_managed_host_start(const struct syle_boot_info *);
+    if(!firmware_managed_host_start(boot))panic("FIRMWARE MANAGEMENT HOST AP UNAVAILABLE");
+#endif
     /* Preserve the early kernel mappings and W^X permissions. */
     root[0] = ((uint64_t *)(uintptr_t)paging_root())[0];
     for (unsigned i=256;i<512;++i)

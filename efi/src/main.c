@@ -291,7 +291,7 @@ static int platform_launch(void *context, const struct syle_boot_config *config)
     boot.kernel_entry = plan.entry;
     log_text("BOOT.KERNEL_LOADED base="); log_hex(kernel_base);
     log_text("BOOT.KERNEL_ENTRY="); log_hex(plan.entry);
-#ifdef SMP_TEST
+#if defined(SMP_TEST) || defined(SYLE_M2_HOST_PARALLEL)
     /* Reserve before the final memory-map/EBS transaction. No firmware AP
      * callback survives EBS; the kernel starts its AP with INIT/SIPI. */
     EFI_PHYSICAL_ADDRESS trampoline=0xfffff;

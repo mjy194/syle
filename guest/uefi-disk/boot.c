@@ -46,7 +46,9 @@ EFI_STATUS efi_main(EFI_HANDLE image,EFI_SYSTEM_TABLE*system){
  EFI_LOADED_IMAGE*k=0;status=uefi_call_wrapper(BS->HandleProtocol,3,kernel,&LoadedImageProtocol,(void**)&k);
  if(EFI_ERROR(status))return status;
  /* The configured ISA COM1 is independent of the PCI firmware console. */
-#ifdef SYLE_DISK_ROOT
+#if defined(SYLE_DISK_ROOT) && defined(SYLE_DISK_SMP_PROBE)
+ static CHAR16 options[]=L"console=ttyS0,115200n8 earlycon=uart8250,io,0x3f8,115200n8 nokaslr pci=conf1 root=/dev/vda2 rootfstype=ext2 ro rootwait init=/sbin/smp-init";
+#elif defined(SYLE_DISK_ROOT)
  static CHAR16 options[]=SYLE_GRAPHICS_CONSOLE L"console=ttyS0,115200n8 earlycon=uart8250,io,0x3f8,115200n8 nokaslr noapic acpi=off pci=conf1 root=/dev/vda2 rootfstype=ext2 rw rootwait init=/sbin/init";
 #else
  static CHAR16 options[]=SYLE_GRAPHICS_CONSOLE L"console=ttyS0,115200n8 earlycon=uart8250,io,0x3f8,115200n8 nokaslr noapic acpi=off pci=off rdinit=/init";

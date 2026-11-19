@@ -42,6 +42,12 @@ int main(void) {
     assert(r.status==NVMX_UNSUPPORTED&&memcmp(&before,&s,sizeof s)==0);
     ok(call(&s,NVMX_WRITE,0,0x800,UINT64_MAX));assert(call(&s,NVMX_READ,0,0x800,0).value==0xffff);
     ok(call(&s,NVMX_WRITE,0,0x4000,UINT64_MAX));assert(call(&s,NVMX_READ,0,0x4000,0).value==UINT32_MAX);
+#ifdef SYLE_NESTED_VMX_TIMER
+    ok(call(&s,NVMX_WRITE,0,0x482e,UINT64_C(0x1122334455667788)));
+    assert(call(&s,NVMX_READ,0,0x482e,0).value==UINT64_C(0x55667788));
+#else
+    assert(call(&s,NVMX_READ,0,0x482e,0).status==NVMX_UNSUPPORTED);
+#endif
     ok(call(&s,NVMX_WRITE,0,0x681e,UINT64_MAX));assert(call(&s,NVMX_READ,0,0x681e,0).value==UINT64_MAX);
     ok(call(&s,NVMX_WRITE,0,0x2806,UINT64_C(0x1122334455667788)));
     assert(call(&s,NVMX_READ,0,0x2807,0).value==0x11223344);

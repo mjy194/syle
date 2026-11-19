@@ -18,7 +18,7 @@ enum fat_result fpa_handle(struct fpa_state*s,struct firmware_memory*memory,bool
  struct fpa_trace t={.rip=v[1],.length=v[2],.flags=v[3],.primary=v[9],.secondary=v[10]};
  if(trace)*trace=t;
  if(v[0]!=40||v[2]!=2||!(v[3]&2)||(v[3]&~UINT64_C(0x250ed7))||
- v[4]||v[5]||v[6]!=0x400||v[7]||v[8]>UINT32_MAX||(v[8]&UINT64_C(0x80000000))||
+ v[4]>2||(v[4]==1&&!(v[3]&0x200))||v[5]||v[6]!=0x400||v[7]||v[8]>UINT32_MAX||(v[8]&UINT64_C(0x80000000))||
  v[9]>UINT32_MAX||(v[9]&UINT64_C(0xc0000000))!=UINT64_C(0xc0000000)||
  v[10]!=0xc2||v[11]>UINT32_MAX||!(v[11]&0x200)||v[12]||
  v[18]>UINT32_MAX||v[19]>UINT16_MAX||
@@ -33,6 +33,7 @@ enum fat_result fpa_handle(struct fpa_state*s,struct firmware_memory*memory,bool
  if(t.available<2||bytes[0]!=0xf3||bytes[1]!=0x90)return FAT_REJECTED;
  s->busy=true;
  if(((t.flags&0x10000)&&(!write(ctx,0x6820,t.flags&~UINT64_C(0x10000))||s->failed||!s->busy))||
+ (v[4]&&(!write(ctx,0x4824,0)||s->failed||!s->busy))||
  !write(ctx,0x681e,t.rip+2)||s->failed||!s->busy)return fatal(s);
  s->busy=false;s->completed++;return FAT_COMMITTED;
 }

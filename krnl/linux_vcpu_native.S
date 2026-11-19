@@ -1,12 +1,40 @@
 .text
-.macro ARM label
- push %rax
- lea \label(%rip),%rax
- mov %rax,lvn_armed_rip(%rip)
- pop %rax
+/* MSR and FXSAVE helpers receive the context in RDI. Once guest GPRs
+ * are loaded, the entry/exit stack holds the trusted context pointer. */
+.macro FAULT_SLOT active=0
+ .if \active
+ mov 24(%rsp),%rax
+ .else
+ mov %rdi,%rax
+ .endif
+ test %rax,%rax
+ jz 1f
+ mov 184(%rax),%rax
+ test %rax,%rax
+ jnz 2f
+1: lea lvn_armed_rip(%rip),%rax
+2:
 .endm
-.macro DISARM
- movq $0,lvn_armed_rip(%rip)
+.macro ARM label, active=0
+ pushfq
+ push %rax
+ push %r11
+ FAULT_SLOT \active
+ lea \label(%rip),%r11
+ mov %r11,(%rax)
+ pop %r11
+ pop %rax
+ popfq
+.endm
+.macro DISARM active=0
+ pushfq
+ push %rax
+ push %r11
+ FAULT_SLOT \active
+ movq $0,(%rax)
+ pop %r11
+ pop %rax
+ popfq
 .endm
 .global lvn_read_raw,lvn_write_raw,lvn_save_raw,lvn_load_raw
 .global lvn_rd_fault,lvn_wr_fault,lvn_fxsave_fault,lvn_fxload_fault,lvn_false
@@ -93,6 +121,13 @@ lvn_rip_fault:
  lea .Lresume_insn(%rip),%rax
 .Lload:
  push %rax
+#ifdef SYLE_M2_HOST_PARALLEL
+ lfence
+ rdtsc
+ shl $32,%rdx
+ or %rdx,%rax
+ mov %rax,200(%rdi)
+#endif
  mov %rdi,%rax
  mov 8(%rax),%rbx
  mov 16(%rax),%rcx
@@ -112,23 +147,23 @@ lvn_rip_fault:
  ret
 .global lvn_launch_fault,lvn_resume_fault,lvn_entry_fail
 .Llaunch:
- ARM lvn_launch_fault
+ ARM lvn_launch_fault,1
 lvn_launch_fault:
  vmlaunch
- DISARM
+ DISARM 1
  jmp lvn_entry_fail
 .Lresume_insn:
- ARM lvn_resume_fault
+ ARM lvn_resume_fault,1
 lvn_resume_fault:
  vmresume
- DISARM
+ DISARM 1
 lvn_entry_fail:
  mov (%rsp),%rdi
  mov 128(%rdi),%rax
  mov %rax,%cr2
  jmp lvn_early_fail
 .Lexit:
- DISARM
+ DISARM 1
  push %rax
  mov 8(%rsp),%rax
  mov %rbx,8(%rax)
@@ -145,6 +180,15 @@ lvn_entry_fail:
  mov %r13,96(%rax)
  mov %r14,104(%rax)
  mov %r15,112(%rax)
+#ifdef SYLE_M2_HOST_PARALLEL
+ mov %rax,%r11
+ lfence
+ rdtsc
+ shl $32,%rdx
+ or %rdx,%rax
+ mov %rax,208(%r11)
+ mov %r11,%rax
+#endif
  pop %rdx
  mov %rdx,0(%rax)
  mov %cr2,%rdx

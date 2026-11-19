@@ -7,10 +7,10 @@
 #endif
 #ifdef SYLE_M2_NESTED
 static void nested_irq0_report(void){
- log_text("NESTED.irq0 samples=");log_hex(irq0_cost.samples);
- log_text(" ticks_100ns=");log_hex(irq0_cost.elapsed);
- log_text(" at_least_4ms=");log_hex(irq0_cost.over_period);
- log_text(" l1_vmx_ops=");log_hex(irq0_cost.ops_total);log_text("\n");
+ log_text("NESTED.irq0 samples=");log_hex(nested_current->irq0_cost.samples);
+ log_text(" ticks_100ns=");log_hex(nested_current->irq0_cost.elapsed);
+ log_text(" at_least_4ms=");log_hex(nested_current->irq0_cost.over_period);
+ log_text(" l1_vmx_ops=");log_hex(nested_current->irq0_cost.ops_total);log_text("\n");
 }
 #endif
 #include "guest_control.h"
@@ -46,31 +46,49 @@ static void fmg_set_root(void*x,uint64_t v){(void)x;__asm__ volatile("mov %0,%%c
 static struct mhc_selectors fmg_selectors(void*x){(void)x;struct mhc_selectors s;__asm__ volatile("mov %%ds,%0;mov %%es,%1;mov %%ss,%2":"=r"(s.ds),"=r"(s.es),"=r"(s.ss));return s;}
 static void fmg_set_selectors(void*x,struct mhc_selectors s){(void)x;__asm__ volatile("mov %0,%%ds;mov %1,%%es;mov %2,%%ss"::"r"(s.ds),"r"(s.es),"r"(s.ss):"memory");}
 static const struct mhc_ops fmg_context_ops={0,fmg_root,fmg_set_root,fmg_selectors,fmg_set_selectors};
-static struct mhc_saved fmg_enter(void){struct mhc_saved s={0};if(!mhc_enter(&s,&fmg_context_ops,paging_root()))fatal();return s;}
+static struct mhc_saved fmg_enter(void){
+ struct mhc_saved s={0};
+ if(!mhc_enter(&s,&fmg_context_ops,paging_root()))fatal();
+#ifdef SYLE_M2_HOST_PARALLEL
+ if(!FW_QUIESCENT())fatal();
+#endif
+ return s;
+}
 static void fmg_leave(struct mhc_saved*s){if(!mhc_leave(s,&fmg_context_ops))fatal();}
 static int fmg_failed_step(unsigned line){
  fmg.failed=true;console_sample_quiet=false;
 #ifdef SYLE_M2_NESTED
- if(nested_enabled&&nested_vmcs.prepared){
-  log_text("NESTED.walk=");log_hex(nested_entry.walk_status);log_text(" fill=");log_hex(nested_entry.fill_status);
-  log_text(" attempt=");log_hex(nested_entry.attempt);log_text(" vectoring=");log_hex(nested_entry.vectoring);
-  log_text(" exit_rip=");log_hex(nested_entry.exit_rip);
-  log_text("NESTED.stage=");log_hex(nested_entry.stage);log_text(" field=");log_hex(nested_entry.field);
-  log_text(" en=");log_hex(nested_entry.en);log_text(" sec=");log_hex(nested_entry.sec);
-  log_text(" event=");log_hex(nested_entry.event);log_text(" rip=");log_hex(nested_entry.rip);log_text(" link=");log_hex(nested_entry.link);
-  log_text("NESTED.entry eptp12=");log_hex(nested_entry.eptp12);
-  log_text(" entry_loads=");log_hex(nested_entry.entry_count);log_text(" exit_loads=");log_hex(nested_entry.exit_count);
-  log_text(" exit_stores=");log_hex(nested_entry.store_count);log_text(" cr0=");log_hex(nested_entry.guest_cr0);
-  log_text(" cr3=");log_hex(nested_entry.guest_cr3);log_text(" cr4=");log_hex(nested_entry.guest_cr4);
-  log_text(" entered=");log_hex(nested_entry.entered);log_text(" exit02=");log_hex(nested_entry.reason);
-  log_text(" qualification=");log_hex(nested_entry.qualification);log_text(" l2_gpa=");log_hex(nested_entry.gpa);
-  log_text(" instruction_error=");log_hex(nested_entry.vm_instruction_error);log_text("\n");
+ for(unsigned i=0;nested_enabled&&i<NESTED_L1_CPUS;i++){
+  const struct nested_l1_context *ctx=&nested_contexts[i];
+  if(!ctx->vmcs.prepared)continue;
+  log_text("NESTED.l1_cpu=");log_hex(i);
+  log_text("NESTED.walk=");log_hex(ctx->entry.walk_status);log_text(" fill=");log_hex(ctx->entry.fill_status);
+  log_text(" attempt=");log_hex(ctx->entry.attempt);log_text(" vectoring=");log_hex(ctx->entry.vectoring);
+  log_text(" exit_rip=");log_hex(ctx->entry.exit_rip);
+  log_text("NESTED.stage=");log_hex(ctx->entry.stage);log_text(" field=");log_hex(ctx->entry.field);
+  log_text(" en=");log_hex(ctx->entry.en);log_text(" sec=");log_hex(ctx->entry.sec);
+  log_text(" event=");log_hex(ctx->entry.event);log_text(" rip=");log_hex(ctx->entry.rip);log_text(" link=");log_hex(ctx->entry.link);
+  log_text("NESTED.entry eptp12=");log_hex(ctx->entry.eptp12);
+  log_text(" entry_loads=");log_hex(ctx->entry.entry_count);log_text(" exit_loads=");log_hex(ctx->entry.exit_count);
+  log_text(" exit_stores=");log_hex(ctx->entry.store_count);log_text(" cr0=");log_hex(ctx->entry.guest_cr0);
+  log_text(" cr3=");log_hex(ctx->entry.guest_cr3);log_text(" cr4=");log_hex(ctx->entry.guest_cr4);
+  log_text(" entered=");log_hex(ctx->entry.entered);log_text(" exit02=");log_hex(ctx->entry.reason);
+  log_text(" qualification=");log_hex(ctx->entry.qualification);log_text(" l2_gpa=");log_hex(ctx->entry.gpa);
+  log_text(" instruction_error=");log_hex(ctx->entry.vm_instruction_error);log_text("\n");
  }
- if(nested_enabled){log_text("NESTED.last_field=");log_hex(nested_last_field);log_text("\n");}
+ if(nested_enabled){log_text("NESTED.last_field=");log_hex(nested_current->last_field);log_text("\n");}
+#endif
+#ifdef SYLE_M2_DUAL_VCPU
+ log_text("FMG.LAPIC svr_writes=");log_hex(firmware_ap.svr_changes);log_text(" svr=");log_hex(firmware_ap.bsp_linux.irq.svr);log_text(" pic=");log_hex(disk_pic_active);log_text("\n");
+ log_text("FMG.AP entries=");log_hex(firmware_ap.entries);log_text(" init_count=");log_hex(firmware_ap.starts);log_text(" reason=");log_hex(firmware_ap.last_reason);log_text(" rip=");log_hex(firmware_ap.last_rip);log_text(" qual=");log_hex(firmware_ap.last_qual);log_text(" cr0=");log_hex(firmware_ap.mode.cr0);log_text(" cr4=");log_hex(firmware_ap.mode.cr4);log_text(" efer=");log_hex(firmware_ap.mode.efer);log_text(" operand=");log_hex(firmware_ap.last_operand);log_text(" mmio_value=");log_hex(firmware_ap.mmio_value);log_text(" icr=");log_hex(firmware_ap.icr_low);log_text("\n");
 #endif
  log_text("FMG.STEP_FAILED generation=");log_hex(fmg.generation);log_text(" line=");log_hex(line);
  log_text(" exits=");log_hex(fmg_observed);log_text(" reason=");log_hex(fmg_reason);
- if(host.active){uint64_t v=0;rd(0x681e,&v);log_text(" rip=");log_hex(v);rd(0x6400,&v);log_text(" qual=");log_hex(v);}
+ if(host.active){uint64_t v=0;rd(0x681e,&v);log_text(" rip=");log_hex(v);rd(0x6400,&v);log_text(" qual=");log_hex(v);if(fmg_reason==48&&rd(0x2400,&v)){log_text(" gpa=");log_hex(v);
+#ifdef SYLE_M2_DUAL_VCPU
+ log_text(" rsi=");log_hex(native.gpr[4]);
+#endif
+}}
  log_text("\n");return 1;
 }
 static uint64_t fmg_hash(uint64_t h,const void*p,size_t n){const uint8_t*b=p;for(size_t i=0;i<n;i++){h^=b[i];h*=UINT64_C(1099511628211);}return h;}
@@ -103,7 +121,19 @@ static bool fmg_snapshot(uint64_t*out){
  }
 #define HASH(x) h=fmg_hash(h,&x,sizeof x)
 #ifdef SYLE_M2_NESTED
- HASH(nested_enabled);if(nested_enabled)HASH(nested_vmcs);
+ HASH(nested_enabled);if(nested_enabled)for(unsigned i=0;i<NESTED_L1_CPUS;i++){HASH(nested_contexts[i].vmcs);HASH(nested_contexts[i].parked_vmcs);HASH(nested_contexts[i].entry);}
+#endif
+#ifdef SYLE_M2_DUAL_VCPU
+ HASH(firmware_ap);
+ if(!firmware_ap.page||!FW_SWITCH(host.vmcs_page,firmware_ap.page))return false;
+ bool ap_ok=true;
+ for(unsigned i=0;i<host.plan.count;i++){
+  uint64_t value;
+  if(!rd(host.plan.fields[i].encoding,&value)){ap_ok=false;break;}
+  h=fmg_hash(h,&value,sizeof value);
+ }
+ if(!FW_SWITCH(firmware_ap.page,host.vmcs_page))fatal();
+ if(!ap_ok)return false;
 #endif
  HASH(mode);HASH(irq_session);HASH(irq_window);HASH(halt_state);HASH(pause_state);HASH(active_apic);HASH(virtual_tsc);HASH(pci);HASH(cmos);HASH(fwcfg);HASH(debug_bank);HASH(disk_state);HASH(disk_legacy);HASH(disk_pic_run);HASH(disk_gp);HASH(disk_pit2);HASH(disk_debug_bank);
 #undef HASH
@@ -114,7 +144,11 @@ static bool fmg_snapshot(uint64_t*out){
 static void fmg_fresh_domain(void){
 #define ZERO(x) x=(__typeof__(x)){0}
 #ifdef SYLE_M2_NESTED
- ZERO(irq0_cost);
+ ZERO(nested_current->irq0_cost);
+#endif
+#ifdef SYLE_TRACE_L2_CLOCK
+ nested_clock_count=0;
+ ZERO(nested_timer_counters[0]);ZERO(nested_timer_counters[1]);
 #endif
  ZERO(debug_bank);ZERO(irq_session);ZERO(irq_route);ZERO(irq_window);ZERO(pause_state);ZERO(halt_state);halt_supported=false;halt_eois=halt_last_eoi_wake=0;
  pm_delay_seen=pm_delay_quiet=pm_delay_report=false;pm_delay_target=pm_delay_reads=pm_delay_pauses=pm_delay_quiet_exits=0;
@@ -142,6 +176,9 @@ static int fmg_prepare(void*ctx,uint64_t profile){
 #endif
  fmg.owned=true;fmg.failed=false;fmg.paused=false;fmg.running=false;fmg.baseline_pages=pmm_get_stats().allocated_pages;fmg.generation++;
  if(!fmg_prepare_runtime()){fmg.failed=true;log_text("FMG.CREATE_FAILED stage=");log_hex(host.open_stage);log_text("\n");goto done;}
+#ifdef SYLE_M2_DUAL_VCPU
+ log_text("FMG.AP parked vmcs=");log_hex(firmware_ap.page);log_text(" ept=");log_hex(mem.eptp);log_text("\n");
+#endif
  fmg.prepared=true;result=0;
  log_text("FMG.CREATE generation=");log_hex(fmg.generation);log_text(" vmcs=");log_hex(host.vmcs_page);log_text(" ept=");log_hex(mem.eptp);log_text(" allocated_delta=");log_hex(pmm_get_stats().allocated_pages-fmg.baseline_pages);log_text("\n");
  done:fmg_leave(&saved);return result;
@@ -165,7 +202,7 @@ static int fmg_stop(void*ctx){
  if(state.host_dirty||(changed&&!safe()))fatal();
  if(fmg.prepared&&!fmg.failed&&!fmg.paused){
 #ifdef SYLE_M2_NESTED
-  nested_drop_cpu();nested_drop_ept();
+  nested_drop_all(true);
 #endif
   if(
 #ifdef SYLE_FIRMWARE_GRAPHICS
@@ -186,7 +223,20 @@ static int fmg_release(void*ctx){
   * close failures retain ownership before any backing RAM can be released. */
  if(persistent_store.sectors&&!syle_ata_close())goto done;
 #ifdef SYLE_M2_NESTED
- nested_drop_cpu();nested_drop_ept();
+ nested_drop_all(false);
+#endif
+#ifdef SYLE_M2_DUAL_VCPU
+#ifdef SYLE_M2_HOST_PARALLEL
+ if(!fmp_call(FMP_CLOSE,0,0))goto done;
+
+#else
+ if(firmware_ap.page&&(!ops.vmclear(ops.context,firmware_ap.page)||!release(0,firmware_ap.page)))fatal();
+#endif
+ firmware_ap=(__typeof__(firmware_ap)){0};
+#endif
+#ifdef SYLE_NESTED_VMX_TIMER
+ uint64_t ref_reads=m2_hv_ref.fast_reads;
+ if(!m2_hv_ref_stop())goto done;
 #endif
  if(!lvh_close(&host))goto done;
  if(changed){if(!safe())fatal();__asm__ volatile("mov %0,%%cr4"::"r"(saved_cr4):"memory");changed=false;}
@@ -197,7 +247,18 @@ static int fmg_release(void*ctx){
  vfr_abort(&disk_ram);
  if(!fwm_release(&mem))goto done;
  if(pmm_get_stats().allocated_pages!=fmg.baseline_pages){log_text("FMG.RELEASE page_balance_failed\n");goto done;}
+#ifdef SYLE_M2_HOST_PARALLEL
+ fmp_report();
+ fmp.entries=fmp.l1_pairs=fmp.nested_pairs=fmp.overlap_ticks=fmp.shootdowns=fmp.cross_ipis=0;
+ fmp.nested_flushes[0]=fmp.nested_flushes[1]=0;
+#endif
  observation_deferred=false;observation_finished=true;console_sample_quiet=false;
+#ifdef SYLE_NESTED_VMX_TIMER
+ log_text("FMG.HOST_REFERENCE fast_reads=");log_hex(ref_reads);log_text("\n");
+#endif
+#ifdef SYLE_TRACE_L2_CLOCK
+ nested_clock_report();
+#endif
  log_text("FMG.RELEASE generation=");log_hex(fmg.generation);log_text(" pages_baseline=");log_hex(fmg.baseline_pages);log_text(" pages_after=");log_hex(pmm_get_stats().allocated_pages);
  log_text(" vmx_active=");log_hex(host.active);log_text(" vmxon=");log_hex(host.vmxon_page);log_text(" vmcs=");log_hex(host.vmcs_page);log_text(" ept_released=");log_hex(!mem.prepared);log_text(" adapter_revoked=");log_hex(!disk_ram.active);
  log_text(" reads=");log_hex(disk_state.reads);log_text(" writes=");log_hex(disk_state.writes);log_text(" flushes=");log_hex(disk_state.flushes);log_text(" irq5=");log_hex(disk_irq5_receipts);

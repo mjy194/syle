@@ -127,9 +127,10 @@ Build the static L1 runner from the checkout root. This uses the same Linux
 boot loader as the native profile with 48 MiB of L2 RAM.
 
 ```sh
-musl-gcc -static -Os -Wall -Wextra -Werror -idirafter /usr/include \
+musl-gcc -static -pthread -Os -Wall -Wextra -Werror -idirafter /usr/include \
   -Ikrnl -DLB_RAM_SIZE=50331648 experiments/m4-linux-kvm/l2-linux.c \
-  experiments/m4-linux-kvm/l2-disk.c krnl/virtio_blk/rw_backend.c krnl/linux_boot.c -o l2-linux
+  experiments/m4-linux-kvm/l2-disk.c krnl/virtio_blk/rw_backend.c krnl/linux_boot.c \
+  krnl/linux_acpi_topology.c -o l2-linux
 ./l2-linux bzImage initramfs.cpio
 ```
 

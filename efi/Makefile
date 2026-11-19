@@ -1102,11 +1102,13 @@ build/k-nested32b-payload.o: ../krnl/ept_payload.S ../krnl/nested_payload.inc ..
 	$(CC) -g -fno-pie $(N32BFLAGS) -c $< -o $@
 build/k-nested32b-smp.o: ../krnl/smp.c ../krnl/smp_nested.inc | build
 	$(CC) $(KFLAGS) $(N32BFLAGS) -DSMP_NESTED_TEST -DSMP_VMX_TEST -c $< -o $@
-build/krnl-smp-nested.elf: $(KCOMMON) build/k-smp-main.o build/k-nested32b-smp.o build/k-smp-vmx.o build/k-smp-acpi.o build/k-smp-cpu.o build/k-smp-entry.o build/k-nested32b-runtime.o build/k-nested32b-guest.o build/k-nested32b-adapter.o build/k-nested32b-payload.o build/k-nested-ept.o build/k-nested_vmx.o build/k-nested_operand.o build/k-nested_profile.o build/k-nested-vcpu-policy.o build/k-nested-vcpu-entry.o build/k-nested-host-state.o ../krnl/link.ld
+build/k-smp-memory-primitives.o: ../krnl/firmware_probe_mem.c | build
+	$(CC) $(KFLAGS) -fno-builtin -c $< -o $@
+build/krnl-smp-nested.elf: $(KCOMMON) build/k-smp-main.o build/k-nested32b-smp.o build/k-smp-vmx.o build/k-smp-acpi.o build/k-smp-cpu.o build/k-smp-entry.o build/k-nested32b-runtime.o build/k-nested32b-guest.o build/k-nested32b-adapter.o build/k-nested32b-payload.o build/k-nested-ept.o build/k-nested_vmx.o build/k-nested_operand.o build/k-nested_profile.o build/k-nested-vcpu-policy.o build/k-nested-vcpu-entry.o build/k-nested-host-state.o ../krnl/link.ld build/k-smp-memory-primitives.o
 	$(LD) -nostdlib -static -T ../krnl/link.ld $(filter %.o,$^) -o $@
 build/smp-nested-esp/EFI/BOOT/BOOTX64.EFI: build/stage0-smp.so
 	mkdir -p $(@D)
-	$(OBJCOPY) $(SECTIONS) --target=efi-app-x86_64 $< $@
+	$(OBJCOPY) $(SECTIONS) -O efi-app-x86_64 $< $@
 .PHONY: smp-nested
 smp-nested: build/smp-nested-esp/EFI/BOOT/BOOTX64.EFI build/smp-nested-esp/syle/krnl.elf
 
@@ -1234,11 +1236,11 @@ build/k-nested34b-payload.o: ../krnl/ept_payload.S ../krnl/nested_payload.inc ..
 	$(CC) -g -fno-pie $(N34BFLAGS) -c $< -o $@
 build/k-nested34b-smp.o: ../krnl/smp.c ../krnl/smp_nested.inc ../krnl/nested_local_runtime.inc | build
 	$(CC) $(KFLAGS) $(N34BFLAGS) -DSMP_NESTED_TEST -DSMP_VMX_TEST -c $< -o $@
-build/krnl-smp-nested-local-invept.elf: $(KCOMMON) build/k-smp-main.o build/k-nested34b-smp.o build/k-smp-vmx.o build/k-smp-acpi.o build/k-smp-cpu.o build/k-smp-entry.o build/k-nested34b-runtime.o build/k-nested34b-guest.o build/k-nested34b-adapter.o build/k-nested34b-payload.o build/k-nested34b-ept.o build/k-nested_vmx.o build/k-nested_operand.o build/k-nested_profile.o build/k-nested_ept.o build/k-nested34b-vcpu.o build/k-nested-vcpu-entry.o build/k-nested-host-state.o build/k-local-invept.o build/k-owner-pool.o build/k-owner-sparse.o build/k-nested_ept_contexts.o build/k-nested_ept_sparse.o build/k-domain-policy.o build/k-domain-dispatch.o build/k-domain-memory.o ../krnl/link.ld
+build/krnl-smp-nested-local-invept.elf: $(KCOMMON) build/k-smp-main.o build/k-nested34b-smp.o build/k-smp-vmx.o build/k-smp-acpi.o build/k-smp-cpu.o build/k-smp-entry.o build/k-nested34b-runtime.o build/k-nested34b-guest.o build/k-nested34b-adapter.o build/k-nested34b-payload.o build/k-nested34b-ept.o build/k-nested_vmx.o build/k-nested_operand.o build/k-nested_profile.o build/k-nested_ept.o build/k-nested34b-vcpu.o build/k-nested-vcpu-entry.o build/k-nested-host-state.o build/k-local-invept.o build/k-owner-pool.o build/k-owner-sparse.o build/k-nested_ept_contexts.o build/k-nested_ept_sparse.o build/k-domain-policy.o build/k-domain-dispatch.o build/k-domain-memory.o ../krnl/link.ld build/k-smp-memory-primitives.o
 	$(LD) -nostdlib -static -T ../krnl/link.ld $(filter %.o,$^) -o $@
 build/smp-nested-local-invept-esp/EFI/BOOT/BOOTX64.EFI: build/stage0-smp.so
 	mkdir -p $(@D)
-	$(OBJCOPY) $(SECTIONS) --target=efi-app-x86_64 $< $@
+	$(OBJCOPY) $(SECTIONS) -O efi-app-x86_64 $< $@
 .PHONY: smp-nested-local-invept
 smp-nested-local-invept: build/smp-nested-local-invept-esp/EFI/BOOT/BOOTX64.EFI build/smp-nested-local-invept-esp/syle/krnl.elf
 

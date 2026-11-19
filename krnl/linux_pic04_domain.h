@@ -10,7 +10,7 @@
  * may follow a partial VMWRITE: caller must sticky-fail/no-resume. send/recv
  * have no VMCS callback and publish neither result nor domain on failure. */
 /* UART sub-character numerator, denominator derived from divisor/LCR. */
-struct lpd_domain {uint64_t uart_fraction;struct pit0 timer;struct pic_master_04 master;struct lpic_state slave;struct linux_uart_runtime uart;bool failed;};
+struct lpd_domain {uint64_t uart_fraction;bool replay_periodic;struct pit0 timer;struct pic_master_04 master;struct lpic_state slave;struct linux_uart_runtime uart;bool failed;};
 bool lpd_init(struct lpd_domain*,uint64_t);
 void lpd_bind(struct lpd_domain*);
 bool lpd_valid(const struct lpd_domain*);

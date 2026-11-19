@@ -18,15 +18,30 @@ struct table {uint16_t limit;uint64_t base;}__attribute__((packed));
 static bool execution(void){uint16_t cs;uint64_t f;
  __asm__ volatile("mov %%cs,%0":"=r"(cs));if(cs&3)return false;
  __asm__ volatile("pushfq;pop %0":"=r"(f));
- return !(f&((1u<<9)|(1u<<10)))&&!paging_ap_start_attempted();
+ return !(f&((1u<<9)|(1u<<10)));
 }
-static bool usable(struct lvb_context*c){return c&&c->bound&&execution();}
+static bool usable(struct lvb_context*c){
+ return c&&c->bound&&execution()&&(c->owned||!paging_ap_start_attempted());
+}
 static bool physical(struct lvb_context*c,uint64_t p){return p&&!(p&4095)&&!(p>>c->physical_bits);}
 static bool vmxe(void){uint64_t x;__asm__ volatile("mov %%cr4,%0":"=r"(x));return (x&(1u<<13))!=0;}
 static void cpuid(uint32_t n,uint32_t*a,uint32_t*b,uint32_t*c,uint32_t*d){
  __asm__ volatile("cpuid":"=a"(*a),"=b"(*b),"=c"(*c),"=d"(*d):"a"(n),"c"(0));
 }
-static bool read_msr(void*v,uint32_t n,uint64_t*out){return usable(v)&&lvn_read_msr(NULL,n,out);}
+bool lvb_is_owner(const struct lvb_context*c){
+ if(!c||!c->bound||!execution())return false;
+ if(!c->owned)return !paging_ap_start_attempted();
+ uint32_t a,b,x,d;cpuid(1,&a,&b,&x,&d);
+ return (b>>24)==c->apic_id;
+}
+static bool read_msr(void*v,uint32_t n,uint64_t*out){
+ struct lvb_context*c=v;
+ if(!usable(c))return false;
+#ifdef SYLE_M2_HOST_PARALLEL
+ if(c->ap)return lvn_read_ap_msr(n,out);
+#endif
+ return lvn_read_msr(NULL,n,out);
+}
 static bool capture(void*v,struct lvh_host*out){
  struct lvb_context*c=v;if(!out||!usable(c)||c->active||!vmxe())return false;
  struct lvh_host h={0};struct table g,i;uint16_t ldtr;
@@ -87,6 +102,10 @@ bool lvb_switch_current(struct lvb_context*c,uint64_t from,uint64_t to){
  if(bad)return false;
  c->current=to;return true;
 }
+bool lvb_read(struct lvb_context*c,uint32_t f,uint64_t*out){
+ if(!usable(c)||!c->active||!c->current||!out||!vmxe())return false;
+ unsigned char bad;__asm__ volatile("vmread %2,%1;setna %0":"=qm"(bad),"=r"(*out):"r"((uint64_t)f):"cc","memory");return !bad;
+}
 static bool write(void*v,uint32_t f,uint64_t value){
  struct lvb_context*c=v;if(!usable(c)||!c->active||!c->current||!vmxe())return false;
  unsigned char bad;__asm__ volatile("vmwrite %2,%1;setna %0":"=qm"(bad):"r"((uint64_t)f),"r"(value):"cc","memory");return !bad;
@@ -103,17 +122,24 @@ static bool off(void*v){
  if(bad)return false;
  c->active=false;c->root=0;return true;
 }
-bool lvb_bind(struct lvb_context*c,const struct sg_memory_ops*m,struct lvh_ops*out){
- if(!c||!m||!out||c->bound||c->active||c->root||c->current||!execution()||
+static bool bind(struct lvb_context*c,const struct sg_memory_ops*m,struct lvh_ops*out,bool owned,bool ap){
+ if(!c||!m||!out||c->bound||c->active||c->root||c->current||!execution()||(!owned&&paging_ap_start_attempted())||
  !m->allocate||!m->release||!m->map||!m->writeback)return false;
  uint32_t a,b,x,d;cpuid(0,&a,&b,&x,&d);
  if(a<1||b!=0x756e6547||d!=0x49656e69||x!=0x6c65746e)return false;
  cpuid(1,&a,&b,&x,&d);if(!(x&(1u<<5))||!(d&(1u<<5)))return false;
+ c->apic_id=b>>24;
  cpuid(0x80000000,&a,&b,&x,&d);if(a<0x80000008)return false;
  cpuid(0x80000008,&a,&b,&x,&d);unsigned bits=a&255;if(bits<32||bits>52)return false;
- c->physical_bits=bits;c->bound=true;
+ c->physical_bits=bits;c->owned=owned;c->ap=ap;c->bound=true;
  *out=(struct lvh_ops){.context=c,.memory=*m,.physical_bits=bits,.intel_vmx=true,
  .capture=capture,.read_msr=read_msr,.vmxon=on,.vmclear=clear,.vmptrld=load,
  .vmwrite=write,.invept=invalidate,.vmxoff=off};return true;
+}
+bool lvb_bind(struct lvb_context*c,const struct sg_memory_ops*m,struct lvh_ops*out){
+ return bind(c,m,out,false,false);
+}
+bool lvb_bind_owned(struct lvb_context*c,const struct sg_memory_ops*m,struct lvh_ops*out,bool ap){
+ return bind(c,m,out,true,ap);
 }
 #endif

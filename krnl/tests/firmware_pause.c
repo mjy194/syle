@@ -20,7 +20,7 @@ struct field {uint32_t id;uint64_t value;};
 struct vm {
  struct field fields[20];
  unsigned reads,writes,fail_read,fail_write;
- uint32_t written[2];uint64_t values[2];
+ uint32_t written[3];uint64_t values[3];
  bool reenter;struct fpa_state*state;struct firmware_memory*memory;
 };
 static uint64_t*value(struct vm*v,uint32_t field){
@@ -29,7 +29,7 @@ static uint64_t*value(struct vm*v,uint32_t field){
 }
 static bool rd(void*x,uint32_t field,uint64_t*out){struct vm*v=x;if(++v->reads==v->fail_read)return false;*out=*value(v,field);return true;}
 static bool wr(void*x,uint32_t field,uint64_t val){
- struct vm*v=x;assert(v->writes<2);assert(field==0x681e||field==0x6820);
+ struct vm*v=x;assert(v->writes<3);assert(field==0x681e||field==0x6820||field==0x4824);
  v->written[v->writes]=field;v->values[v->writes++]=val;*value(v,field)=val;
  if(v->reenter)assert(fpa_handle(v->state,v->memory,true,v,rd,wr,NULL)==FAT_FATAL);
  return v->writes!=v->fail_write; /* Includes mutation before failure. */
@@ -62,11 +62,17 @@ int main(void){
  /* Invalid vectoring payload is ignored only when its valid bit is clear. */
  v=initial();*value(&v,0x4408)=0x1234;
  assert(fpa_handle(&s,m,true,&v,rd,wr,NULL)==FAT_COMMITTED&&s.completed==3);
+ for(unsigned shadow=1;shadow<=2;shadow++){
+  v=initial();*value(&v,0x4824)=shadow;
+  assert(fpa_handle(&s,m,true,&v,rd,wr,NULL)==FAT_COMMITTED&&v.writes==3);
+  assert(v.written[1]==0x4824&&v.values[1]==0&&v.written[2]==0x681e);
+ }
+ v=initial();*value(&v,0x4824)=1;*value(&v,0x6820)=2;rejected(m,&v);
  for(unsigned i=1;i<=20;i++){v=initial();v.fail_read=i;rejected(m,&v);assert(v.reads==i);}
  const struct field invalid[]={
  {0x4402,0x80000028},{0x4402,52},{0x440c,0},{0x440c,1},{0x440c,3},{0x440c,UINT64_C(0x100000002)},
  {0x6820,0x204},{0x6820,0x10306},{0x6820,0x30206},{0x6820,UINT64_MAX},
- {0x4824,1},{0x4824,2},{0x4824,8},{0x6822,1},{0x681a,0x401},{0x4016,0x80000020},
+ {0x4824,3},{0x4824,8},{0x6822,1},{0x681a,0x401},{0x4016,0x80000020},
  {0x4408,0x80000320},{0x4408,UINT64_C(1)<<32},{0x4002,0x80000000},{0x4002,0x40000000},
  {0x4002,UINT64_C(0x1c0000000)},{0x401e,0x42},{0x401e,0x4c2},{0x4012,0xc004},
  {0x4012,UINT64_C(0x10000c204)},{0x2802,1},{0x6800,0x10033},{0x6804,0x3668},

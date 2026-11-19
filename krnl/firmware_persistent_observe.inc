@@ -31,12 +31,15 @@ static bool persistent_reset(uint64_t rip,uint64_t q,unsigned len){
 /* Type-1-only platform: CFB is the legacy mechanism-selection probe latch;
  * it does not alter the distinct CF8 address DWORD or expose conf2 cycles. */
 static uint8_t persistent_cfb;
-static bool persistent_config_probe(uint64_t rip,uint64_t q,unsigned len){
+static bool persistent_cpu_config_probe(uint64_t g[15],uint64_t rip,uint64_t q,unsigned len){
  uint8_t b[15];size_t n=io_instruction_fetch(rip,b);
- if(!irq_identity()||!fpp_encoding(q,len,b,n)||(q&7)||(q>>16)!=0xcfb)return false;
- if(!(q&8)&&(uint8_t)native.gpr[0]>1)return false;
+ if(!fpp_encoding(q,len,b,n)||(q&7)||(q>>16)!=0xcfb)return false;
+ if(!(q&8)&&(uint8_t)g[0]>1)return false;
  if(!irq_write(0,0x681e,rip+len))return false;
- if(q&8)native.gpr[0]=(native.gpr[0]&~UINT64_C(255))|persistent_cfb;
- else persistent_cfb=(uint8_t)native.gpr[0];
+ if(q&8)g[0]=(g[0]&~UINT64_C(255))|persistent_cfb;
+ else persistent_cfb=(uint8_t)g[0];
  return true;
+}
+static bool persistent_config_probe(uint64_t rip,uint64_t q,unsigned len){
+ return irq_identity()&&persistent_cpu_config_probe(native.gpr,rip,q,len);
 }

@@ -13,7 +13,7 @@ struct fpa_trace {
  * The outer adapter proves current VMCS/EPT identity and safe host recovery.
  * Reads actual VMCS state and owned F3 90 bytes; supports only the existing
  * CPL0 long-mode firmware profile with PAUSE exiting and no PLE.
- * Retires RF then RIP, publishing completed last. A failed VMWRITE may have
+ * Retires RF and the STI/MOV-SS interrupt shadow before advancing RIP, publishing completed last. A failed VMWRITE may have
  * taken effect: latch failed permanently, never resume/retry. Every rejection
  * also requires the caller to stop. No GPR, memory, timer or control writes.
  * VM-exit qualification has no PAUSE operand meaning and is not consulted. */

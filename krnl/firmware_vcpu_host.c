@@ -45,6 +45,19 @@ static bool region(struct lvh_context*c,const struct firmware_memory*m,uint64_t*
  for(unsigned i=0;i<4096;i++)v[i]=0;
  uint32_t rev=c->basic&0x7fffffff;for(unsigned i=0;i<4;i++)v[i]=(unsigned char)(rev>>(8*i));return true;
 }
+/* Program the currently selected VMCS with the shared address space and
+ * the host return state captured on its owning physical CPU. */
+bool fwh_program_reset(struct lvh_context*c,uint64_t rsp,uint64_t rip){
+ const struct lvh_ops*o=&c->owner;
+ for(unsigned i=0;i<c->plan.count;i++)if(!o->vmwrite(o->context,c->plan.fields[i].encoding,c->plan.fields[i].value))return false;
+ struct lvh_host*h=&c->host;
+#define W(k,v) do{if(!o->vmwrite(o->context,(k),(v)))return false;}while(0)
+ W(0xc00,h->es);W(0xc02,h->cs);W(0xc04,h->ss);W(0xc06,h->ds);W(0xc08,h->fs);W(0xc0a,h->gs);W(0xc0c,h->tr);
+ W(0x4c00,h->sysenter_cs);W(0x2c00,h->pat);W(0x2c02,h->efer);
+ W(0x6c00,h->cr0);W(0x6c02,h->cr3);W(0x6c04,h->cr4);W(0x6c06,h->fs_base);W(0x6c08,h->gs_base);W(0x6c0a,h->tr_base);W(0x6c0c,h->gdt_base);W(0x6c0e,h->idt_base);W(0x6c10,h->sysenter_esp);W(0x6c12,h->sysenter_eip);W(0x6c14,rsp);W(0x6c16,rip);
+#undef W
+ return true;
+}
 bool fwh_open(struct lvh_context*c,const struct lvh_ops*o,const struct firmware_memory*m,uint64_t rsp,uint64_t rip){
  if(c)c->open_stage=1;
  if(!c||!ops_ok(o)||!m||!m->prepared||c->quarantined||c->active||c->ready||c->vmxon_page||c->vmcs_page||!rsp||!rip||(rsp&15)||!canon(rsp)||!canon(rip))return false;
@@ -61,14 +74,7 @@ bool fwh_open(struct lvh_context*c,const struct lvh_ops*o,const struct firmware_
  c->open_stage=7;
  if(!o->vmclear(o->context,c->vmcs_page)||!o->vmptrld(o->context,c->vmcs_page))goto fail;
  c->open_stage=8;
- for(unsigned i=0;i<c->plan.count;i++)if(!o->vmwrite(o->context,c->plan.fields[i].encoding,c->plan.fields[i].value))goto fail;
- c->open_stage=9;
- struct lvh_host*h=&c->host;
-#define W(k,v) do{if(!o->vmwrite(o->context,(k),(v)))goto fail;}while(0)
- W(0xc00,h->es);W(0xc02,h->cs);W(0xc04,h->ss);W(0xc06,h->ds);W(0xc08,h->fs);W(0xc0a,h->gs);W(0xc0c,h->tr);
- W(0x4c00,h->sysenter_cs);W(0x2c00,h->pat);W(0x2c02,h->efer);
- W(0x6c00,h->cr0);W(0x6c02,h->cr3);W(0x6c04,h->cr4);W(0x6c06,h->fs_base);W(0x6c08,h->gs_base);W(0x6c0a,h->tr_base);W(0x6c0c,h->gdt_base);W(0x6c0e,h->idt_base);W(0x6c10,h->sysenter_esp);W(0x6c12,h->sysenter_eip);W(0x6c14,rsp);W(0x6c16,rip);
-#undef W
+ if(!fwh_program_reset(c,rsp,rip))goto fail;
  c->ready=true;c->open_stage=10;return true;
 fail:
  (void)lvh_close(c);return false;

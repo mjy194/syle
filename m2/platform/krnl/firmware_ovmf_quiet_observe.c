@@ -23,9 +23,70 @@
 static struct fdr_bank debug_bank;
 #ifdef SYLE_M2_NESTED
 #include "nested_vmx.h"
+#include "linux_vcpu_prepare.h"
+#include "linux_vcpu_state.h"
+#include "nested_ept.h"
+#include "nested_ept_sparse.h"
 static bool nested_enabled;
-static struct nvmx nested_vmcs;
-static uint64_t nested_last_field;
+struct nested_page_budget {uint64_t vmcs;unsigned pages;};
+#ifdef SYLE_M2_DUAL_VCPU
+#define NESTED_L1_CPUS 2
+#else
+#define NESTED_L1_CPUS 1
+#endif
+#ifdef SYLE_TRACE_L2_CLOCK
+struct nested_timer_counters {
+ uint64_t l1_expired,l1_late_ticks,l1_max_late,l1_batched,l1_accept,l1_reflect;
+ uint64_t l2_submit,l2_deliver,l1_vmx_expired;
+};
+static struct nested_timer_counters nested_timer_counters[2];
+#endif
+struct nested_l1_context {
+ struct nvmx vmcs, parked_vmcs;
+ uint64_t last_field;
+ struct fcm_state *l1_mode;
+ struct lvn_context *l1_native;
+ struct lvs_state *l1_state;
+ struct lvs_ops *l1_ops;
+ struct fbd_bank *debug;
+ uint64_t *l1_page;
+ struct {
+  uint64_t guest_cr0,guest_cr3,guest_cr4,eptp12,entry_count,exit_count,store_count;
+  uint64_t reason,qualification,gpa,vm_instruction_error;
+  uint64_t walk_status,fill_status,attempt,vectoring,exit_rip;
+  uint64_t stage,field,en,sec,event,rip,link;
+  uint8_t interrupt_vector;
+  bool entered,long_mode,unrestricted,suspended;
+#ifdef SYLE_NESTED_VMX_TIMER
+  uint64_t timer_deadline;
+  bool timer_enabled;
+#endif
+#ifdef SYLE_TRACE_L2_CLOCK
+  bool trace_timer_pending;
+#endif
+#ifdef SYLE_M2_HOST_PARALLEL
+  bool prefetched;
+  enum lvs_result outcome;
+#endif
+ } entry;
+
+ struct nested_ept_sparse composed;
+ struct nested_page_budget composed_budget;
+ uint64_t composed_source;
+ /* Both physical VMCS pages stay pinned to the same CPU. A virtual
+  * VMCLEAR, VMXOFF or guest teardown ends the VMCS02 lifetime. */
+ struct {
+  uint64_t page,fields[LVP_MAX_FIELDS];
+  bool launched;
+ } cpu;
+ struct {
+  uint64_t samples,begin,elapsed,over_period,vmx_ops,ops_begin,ops_total;
+  bool pending,eoi;
+ } irq0_cost;
+};
+static struct nested_l1_context nested_contexts[NESTED_L1_CPUS];
+/* The pinned execution CPU switches this owner only across L1 run slots. */
+static struct nested_l1_context *nested_current=nested_contexts;
 #endif
 #ifdef SYLE_FIRMWARE_DISK
 static bool disk_pic_active,disk_pic_window;
@@ -189,11 +250,17 @@ static void console_live_byte(uint8_t b){fmg_emit(b);}
 #endif
 #define log_text observation_text
 #define log_hex observation_hex
+#ifdef SYLE_NESTED_VMX_TIMER
+#include "firmware_host_reference.inc"
+#endif
 static bool clock_init(void) {
  struct lhc_sample sample;
  if(!linux_host_clock_native_source(&clock_source)||clock_source.properties.hz!=10000000||
  !clock_source.properties.verified||!clock_source.properties.invariant||
  !clock_source.sample(clock_source.ctx,&sample))return false;
+#ifdef SYLE_NESTED_VMX_TIMER
+ if(!m2_hv_ref_start(&clock_source,sample.tsc))return false;
+#endif
  active_apic.epoch=sample.epoch;active_apic.reference=sample.tsc;
  return ft100_mmio_init(&active_apic.clock,sample.epoch,sample.tsc,clock_source.max_gap);
 }
@@ -274,13 +341,55 @@ static bool release(void*x,uint64_t p){(void)x;return pmm_free_page(p)!=0;}
 static void*map(void*x,uint64_t p){(void)x;return paging_phys_to_virt(p);}
 static bool wb(void*x,uint64_t p){(void)x;return paging_page_rw_wb(p)&&vmx_memory_region_wb(p);}
 static const struct sg_memory_ops memory_ops={0,alloc,release,map,wb};
-static bool rd(uint32_t f,uint64_t*v){unsigned char bad;__asm__ volatile("vmread %2,%1;setna %0":"=qm"(bad),"=r"(*v):"r"((uint64_t)f):"cc","memory");return !bad;}
+#ifdef SYLE_M2_HOST_PARALLEL
+enum fmp_operation { FMP_OPEN, FMP_CLOSE, FMP_READ, FMP_WRITE, FMP_SWITCH,
+                     FMP_CLEAR, FMP_INVEPT, FMP_SHOOTDOWN, FMP_RESET, FMP_TSC, FMP_RUN,
+#ifdef SYLE_M2_NESTED
+                     FMP_READ_BATCH, FMP_WRITE_BATCH,
+#endif
+};
+static bool fmp_call(enum fmp_operation,uint64_t,uint64_t);
+static bool fmp_read(uint32_t,uint64_t *);
+static bool fmp_write(uint32_t,uint64_t);
+static bool fmp_quiescent(void);
+static bool fmp_switch(uint64_t,uint64_t);
+static bool fmp_shared_invept(void);
+#ifdef SYLE_M2_NESTED
+struct nested_vmcs_batch;
+static bool fmp_vmcs_batch(struct nested_vmcs_batch *,bool);
+static enum lvs_result fmp_nested_run(struct nested_l1_context *,bool);
+static bool fmp_nested_invept(bool,uint64_t);
+#endif
+static enum lvs_result fmp_run_remote(void);
+#define FW_SWITCH(from,to) fmp_switch(from,to)
+#define FW_SHARED_INVEPT() fmp_shared_invept()
+#define FW_AP_RUN() fmp_run_remote()
+#define FW_QUIESCENT() fmp_quiescent()
+#else
+#define FW_SWITCH(from,to) lvb_switch_current(&backend,from,to)
+#define FW_SHARED_INVEPT() ops.invept(ops.context,mem.eptp)
+#define FW_AP_RUN() lvs_run(&firmware_ap.state,&firmware_ap.state_ops)
+#define FW_QUIESCENT() (!paging_ap_start_attempted())
+#endif
+static bool rd(uint32_t f,uint64_t*v){
+#ifdef SYLE_M2_HOST_PARALLEL
+ return fmp_read(f,v);
+#else
+ unsigned char bad;__asm__ volatile("vmread %2,%1;setna %0":"=qm"(bad),"=r"(*v):"r"((uint64_t)f):"cc","memory");return !bad;
+#endif
+}
 static bool traced_rd(uint32_t f,uint64_t*v){
  if(rd(f,v))return true;
  observation_finish();
  log_text("OVMF.CLOCK_APIC vmread_failed field=");log_hex(f);log_text("\n");return false;
 }
-static bool wr(uint32_t f,uint64_t v){return ops.vmwrite(ops.context,f,v);}
+static bool wr(uint32_t f,uint64_t v){
+#ifdef SYLE_M2_HOST_PARALLEL
+ return fmp_write(f,v);
+#else
+ return ops.vmwrite(ops.context,f,v);
+#endif
+}
 static bool pic_write(void*x,uint32_t f,uint64_t v){(void)x;return wr(f,v);}
 static bool safe(void){uint64_t a,b,c;__asm__ volatile("mov %%cr0,%0":"=r"(a));__asm__ volatile("mov %%cr3,%0":"=r"(b));__asm__ volatile("mov %%cr4,%0":"=r"(c));return !state.host_dirty&&a==saved_cr0&&b==saved_cr3&&c==(saved_cr4|(changed?0x2000:0));}
 static bool irq_write(void*ctx,uint32_t field,uint64_t value){
@@ -306,13 +415,13 @@ static bool de_gate(struct fcmd_gate*g){
  rd(0x4004,&bitmap)&&(bitmap&0x42)==0x42&&(host.caps.cr4_fixed1&8)&&
  g->primary_controls<=UINT32_MAX&&g->entry_controls<=UINT32_MAX&&g->exit_controls<=UINT32_MAX&&bitmap<=UINT32_MAX&&(!disk_pic_active||bitmap==0x42);
 }
-static bool de_mode_write(enum fcm_register reg,uint64_t value,struct fcm_state*out){
+static bool de_mode_write(const struct fcm_state *current,enum fcm_register reg,uint64_t value,struct fcm_state*out){
  struct fcmd_gate gate;
- struct fcm_state base=mode;
+ struct fcm_state base=*current;
 #ifdef SYLE_M2_NESTED
  uint64_t vmxe=(reg==FCM_CR4?value:base.cr4)&0x2000;
  if(vmxe&&!nested_enabled)return false;
- if(!vmxe&&nested_vmcs.root)return false;
+ if(!vmxe&&nested_current->vmcs.root)return false;
  base.cr4&=~UINT64_C(0x2000);
  if(reg==FCM_CR4)value&=~UINT64_C(0x2000);
 #endif
@@ -330,7 +439,7 @@ static bool irq_identity(void){
  return irq_planned(0x4002,&expected_primary)&&irq_planned(0x4000,&expected_pin)&&
  irq_planned(0x4012,&expected_entry)&&!(expected_primary&4)&&
  !bad&&current==host.vmcs_page&&host.ready&&!host.quarantined&&safe()&&
- !(flags&0x200)&&!lvn_armed_rip&&!paging_ap_start_attempted()&&
+ !(flags&0x200)&&!lvn_armed_rip&&FW_QUIESCENT()&&
  rd(0x4002,&primary)&&primary==(expected_primary|((irq_window.armed||disk_pic_window)?4:0))&&(primary&(1u<<31))&&
  rd(0x401e,&secondary)&&secondary==0xc2&&rd(0x201a,&eptp)&&eptp==mem.eptp&&
  rd(0x4000,&pin)&&pin==expected_pin&&!(pin&0x80)&&fag_host_events_exit(pin)&&
@@ -365,7 +474,7 @@ static bool cache_sample(void*ctx){(void)ctx;return safe()&&clock_sync();}
 static bool dirty_admit(void){
  uint64_t secondary,eptp,primary,flags;
  __asm__ volatile("pushfq;pop %0":"=r"(flags));
- return safe()&&!(flags&0x200)&&!lvn_armed_rip&&!paging_ap_start_attempted()&&
+ return safe()&&!(flags&0x200)&&!lvn_armed_rip&&FW_QUIESCENT()&&
   traced_rd(0x4002,&primary)&&(primary&(UINT64_C(1)<<31))&&
   traced_rd(0x401e,&secondary)&&secondary==0xc2&&
   traced_rd(0x201a,&eptp)&&eptp==mem.eptp&&(eptp&4095)==0x1e;
@@ -482,8 +591,9 @@ static void irq_lvt_diagnose(const struct fmm_memory*m,const struct fat_exit*e){
  }
 }
 static bool cache_maintain(void*ctx){
- (void)ctx;if(cache_attempted||!safe()||lvn_armed_rip||!fwb_kvm_environment())return false;
- cache_attempted=true; /* Irreversible operation may start; never retry. */
+ bool *attempted=ctx?ctx:&cache_attempted;
+ if(*attempted||!safe()||lvn_armed_rip||!fwb_kvm_environment())return false;
+ *attempted=true; /* Irreversible operation may start; never retry. */
  log_text("OVMF.CACHE_KVM attempting_L1_WBINVD outer_KVM_owns_physical_effect\n");
  bool maintained=fwb_kvm_maintain();
  log_text("OVMF.CACHE_KVM maintenance_returned=");log_hex(maintained);log_text("\n");
@@ -492,22 +602,25 @@ static bool cache_maintain(void*ctx){
 static bool enable(void){
  uint64_t f,lo,hi,v;__asm__ volatile("pushfq;pop %0":"=r"(f));
  __asm__ volatile("mov %%cr0,%0":"=r"(saved_cr0));__asm__ volatile("mov %%cr3,%0":"=r"(saved_cr3));__asm__ volatile("mov %%cr4,%0":"=r"(saved_cr4));
- if((f&0x600)||(saved_cr4&0x2000)||paging_ap_start_attempted())return false;
+ if((f&0x600)||(saved_cr4&0x2000)||!FW_QUIESCENT())return false;
  if(!lvn_read_msr(&native,0x3a,&v)||(v&5)!=5||!lvn_read_msr(&native,0x488,&lo)||!lvn_read_msr(&native,0x489,&hi))return false;
  v=saved_cr4|0x2000;if((v&lo)!=lo||(v&~hi))return false;
  __asm__ volatile("mov %0,%%cr4"::"r"(v):"memory");changed=true;return true;
 }
-static bool reg_read(unsigned n,uint64_t*v){static const unsigned ix[16]={0,2,3,1,0,6,4,5,7,8,9,10,11,12,13,14};if(n>15)return false;if(n==4)return rd(0x681c,v);*v=native.gpr[ix[n]];return true;}
-static bool reg_write(unsigned n,uint64_t v){static const unsigned ix[16]={0,2,3,1,0,6,4,5,7,8,9,10,11,12,13,14};if(n>15)return false;if(n==4)return wr(0x681c,v);native.gpr[ix[n]]=v;return true;}
+static bool vcpu_reg_read(uint64_t g[15],unsigned n,uint64_t*v){static const unsigned ix[16]={0,2,3,1,0,6,4,5,7,8,9,10,11,12,13,14};if(n>15)return false;if(n==4)return rd(0x681c,v);*v=g[ix[n]];return true;}
+static bool reg_read(unsigned n,uint64_t*v){return vcpu_reg_read(native.gpr,n,v);}
+static bool vcpu_reg_write(uint64_t g[15],unsigned n,uint64_t v){static const unsigned ix[16]={0,2,3,1,0,6,4,5,7,8,9,10,11,12,13,14};if(n>15)return false;if(n==4)return wr(0x681c,v);g[ix[n]]=v;return true;}
+static bool reg_write(unsigned n,uint64_t v){return vcpu_reg_write(native.gpr,n,v);}
 static bool mode_commit_failed(void){log_text("OVMF.IRQ mode_commit_failed_effects_not_rolled_back_no_reentry\n");if(irq_session.ready){irq_session.failed=true;fti_quarantine(&irq_session.owner);}return false;}
-static bool commit_mode(const struct fcm_state*n){
+static bool commit_vcpu_mode(struct fcm_state *current,const struct fcm_state*n){
  uint64_t entry,hw0=n->cr0|(host.caps.cr0_fixed0&~UINT64_C(0x80000001)),hw4=n->cr4|0x2000;
  if((hw0&~host.caps.cr0_fixed1)||(hw4&host.caps.cr4_fixed0)!=host.caps.cr4_fixed0||(hw4&~host.caps.cr4_fixed1)||!rd(0x4012,&entry))return false;
  entry=(entry&~UINT64_C(0x200))|(n->ia32e?0x200:0);
  /* Any partial failure is terminal; never re-enter a mixed-mode VMCS. */
  if(!wr(0x6800,hw0)||!wr(0x6004,n->cr0)||!wr(0x6802,n->cr3)||!wr(0x6804,hw4)||!wr(0x6006,n->cr4)||!wr(0x2806,n->efer)||!wr(0x4012,entry))return mode_commit_failed();
- mode=*n;return true;
+ *current=*n;return true;
 }
+static bool commit_mode(const struct fcm_state*n){return commit_vcpu_mode(&mode,n);}
 static size_t io_instruction_fetch(uint64_t rip,uint8_t bytes[15]) {
  struct fmm_memory m={.memory=&mem};uint64_t ar,selector;
  if(!rd(0x6800,&m.cr0)||!rd(0x6802,&m.cr3)||!rd(0x6804,&m.cr4)||!rd(0x2806,&m.efer)||
@@ -602,6 +715,11 @@ static bool fwcfg_dispatch(uint64_t rip,uint64_t q,unsigned length,uint64_t flag
 static bool pause_read(void*x,uint32_t field,uint64_t*value){(void)x;return traced_rd(field,value);}
 static bool pause_dispatch(void){
  struct fpa_trace trace={0};
+#ifdef SYLE_M2_DUAL_VCPU
+ if(!irq_session.ready){
+  if(!dirty_admit()||!observation_ok())return false;
+ }else
+#endif
  if(!irq_session.ready||!irq_identity()||!observation_ok())return false;
  enum fat_result result=fpa_handle(&pause_state,&mem,true,0,pause_read,pic_write,&trace);
  if(result==FAT_COMMITTED && trace.rip==0x70c236e){
@@ -640,7 +758,45 @@ static bool pause_dispatch(void){
 #include "firmware_persistent_observe.inc"
 #endif
 #ifdef SYLE_M2_NESTED
+#ifdef SYLE_M2_DUAL_VCPU
+static bool nested_l1_irq_poll(uint8_t *vector);
+static bool nested_l1_irq_accept(uint8_t vector);
+#endif
 #include "firmware_kvm_init.inc"
+#endif
+#ifdef SYLE_M2_DUAL_VCPU
+/* AP starts on guest SIPI. Both VMCS01s share the guest EPT. */
+static struct {
+ uint64_t page,last_reason,last_qual,last_rip,entries,starts;
+ struct fcm_state mode;
+ struct guest_apic apic,bsp_linux;
+ bool handoff;
+ unsigned svr_changes;
+ uint64_t timer_backlog[2];
+ uint64_t hpet_started;
+ uint32_t hpet_count,hpet_compare[3];
+ bool hpet_enabled;
+ struct fpa_state pause;
+ struct fbd_bank debug;
+ struct fwb_state cache;
+ struct lmc_state microcode;
+ struct ft100_mmio timer;
+ uint64_t last_operand;
+ uint32_t icr_high,icr_low,mmio_value;
+ uint8_t elcr[2],shutdown_code,imcr_index,imcr;
+ bool initialized,runnable,gp_pending,halt_if;
+ struct lvn_context native;
+ struct lvs_state state;
+ struct lvs_ops state_ops;
+} firmware_ap;
+#ifdef SYLE_M2_HOST_PARALLEL
+#undef log_text
+#undef log_hex
+#include "firmware_host_parallel.inc"
+#define log_text observation_text
+#define log_hex observation_hex
+#endif
+#include "firmware_ap_start.inc"
 #endif
 static bool dispatch(uint64_t reason){
  uint64_t rip,len,q,vector,cs;
@@ -688,23 +844,7 @@ static bool dispatch(uint64_t reason){
 #ifdef SYLE_FIRMWARE_DISK
 #ifdef SYLE_M2_NESTED
  if(nested_enabled&&((reason>=19&&reason<=27)||reason==50))return nested_root_instruction(reason,rip,len,q,flags);
- if(nested_enabled && reason==31 && (uint32_t)native.gpr[2]==0x1d9 && len==2){
-  uint64_t debugctl;
-  if(!rd(0x2802,&debugctl)||debugctl)return false;
-  native.gpr[0]=0;native.gpr[3]=0;
-  return wr(0x681e,rip+len);
- }
- if(nested_enabled && reason==31 && (uint32_t)native.gpr[2]==0x277 && len==2){
-  /* M2 keeps the reset PAT layout; no guest PAT writes are accepted. */
-  native.gpr[0]=native.gpr[3]=0x00070406;
-  return wr(0x681e,rip+len);
- }
- if(nested_enabled && reason==31 && (uint32_t)native.gpr[2]>=0x480 && (uint32_t)native.gpr[2]<=0x492){
-  uint64_t value;
-  if(len!=2 || !nested_capability(native.gpr[2],&value))return false;
-  native.gpr[0]=(uint32_t)value;native.gpr[3]=value>>32;
-  return wr(0x681e,rip+len);
- }
+ if(nested_enabled&&reason==31&&nested_msr_supported(native.gpr[2]))return nested_read_msr(native.gpr,rip,len);
 #endif
  if(reason==31&&(uint32_t)native.gpr[2]==0xce)return disk_inject_gp(rip,(unsigned)len);
  if(reason==14)return disk_invlpg(rip,q,(unsigned)len);
@@ -753,6 +893,12 @@ static bool dispatch(uint64_t reason){
   if(!fcats_query(&cpu,tsc_source_ready(),1,0,&cpu_result)){log_text("OVMF.CLOCK_APIC reject=cpu_query\n");return false;}
   log_text("OVMF.CLOCK_APIC ept_snapshot_ready cr0=");log_hex(m.cr0);log_text(" cr3=");log_hex(m.cr3);log_text(" cr4=");log_hex(m.cr4);log_text(" cs_ar=");log_hex(ar);log_text(" ept_caps=");log_hex(host.caps.ept);log_text("\n");
   m.cs_ar=(uint32_t)ar;m.cs_selector=(uint16_t)selector;e.entry_event=(uint32_t)event;
+#ifdef SYLE_M2_DUAL_VCPU
+  if((e.physical&~UINT64_C(4095))==0xfed00000)return linux_hpet(&m,&e,native.gpr);
+  if(e.physical==0xfee00300||e.physical==0xfee00310)return firmware_icr(&m,&e);
+  if((firmware_ap.handoff||(e.rip>>63&&e.physical==0xfee000f0))&&
+     e.physical>=0xfee00000&&e.physical<0xfee01000)return linux_bsp_mmio(&m,&e);
+#endif
   if(!clock_sync())return false;
   if(irq_session.ready){log_text("OVMF.IRQ live_owner last=");log_hex(irq_session.owner.last);log_text(" deadline=");log_hex(irq_session.owner.deadline_bus);log_text(" following_legacy_fields_are_retired_snapshot\n");}
   log_text("OVMF.CLOCK_APIC before_mmio svr=");log_hex(active_apic.device.apic.irq.svr);
@@ -954,6 +1100,22 @@ static bool dispatch(uint64_t reason){
   unsigned port=(unsigned)((q>>16)&0xffff);
 #ifdef SYLE_FIRMWARE_CONSOLE
 #ifdef SYLE_FIRMWARE_DISK
+#ifdef SYLE_M2_DUAL_VCPU
+  if(port==0x22||port==0x23)return linux_imcr_io(native.gpr,rip,q,len);
+  if(port==0x4d0||port==0x4d1){
+   unsigned chip=port-0x4d0;
+   if((q&0xffff)!=0&&(q&0xffff)!=8)return false;
+   if((uint16_t)native.gpr[3]!=port)return false;
+   if(q&8)native.gpr[0]=(native.gpr[0]&~UINT64_C(255))|firmware_ap.elcr[chip];
+   else{
+    uint8_t programmed=native.gpr[0]&(chip?0xde:0xf8);
+    /* The current UART and disk routes have no programmable ELCR mode. */
+    if(!chip&&(programmed&0x30))return false;
+    firmware_ap.elcr[chip]=programmed;
+   }
+   return wr(0x681e,rip+len);
+  }
+#endif
   if(port==0xcfb)return persistent_config_probe(rip,q,(unsigned)len);
   if(port==0x64||port==0xcf9)return persistent_reset(rip,q,(unsigned)len);
   if(port==0x80||(port>=0x3f8&&port<=0x3ff)||(port>=0x2f8&&port<=0x2ff)||(port>=0x3e8&&port<=0x3ef)||(port>=0x2e8&&port<=0x2ef))return disk_legacy_io(rip,q,(unsigned)len,flags);
@@ -969,6 +1131,16 @@ static bool dispatch(uint64_t reason){
 #endif
   if(port==0x510||port==0x511||(port>=0x514&&port<=0x51b))return fwcfg_dispatch(rip,q,(unsigned)len,flags,blocking,pending_debug,vector);
   if(port==0x70||port==0x71){
+#ifdef SYLE_M2_DUAL_VCPU
+   if(port==0x71&&cmos.rtc.index==15&&firmware_ap.handoff){
+    uint8_t op[15];size_t count=io_instruction_fetch(rip,op);
+    if((q&7)||!fpp_encoding(q,len,op,count)||(!(q&64)&&(uint16_t)native.gpr[3]!=port))return false;
+    if(!wr(0x681e,rip+len))return false;
+    if(q&8)native.gpr[0]=(native.gpr[0]&~UINT64_C(255))|firmware_ap.shutdown_code;
+    else firmware_ap.shutdown_code=(uint8_t)native.gpr[0];
+    return true;
+   }
+#endif
    if(!clock_sync())return false;
    if(q==UINT64_C(0x710008)){
     rtc_data_reads++;
@@ -1089,6 +1261,9 @@ if(!pm_delay_quiet){
   if(len!=2)return false;
   struct fcp_result r;
   if(!fcats_query(&cpu,tsc_source_ready(),(uint32_t)native.gpr[0],(uint32_t)native.gpr[2],&r))return false;
+#ifdef SYLE_M2_DUAL_VCPU
+  firmware_cpu_identity((uint32_t)native.gpr[0],0,&r);
+#endif
 #ifdef SYLE_M2_NESTED
   if(nested_enabled && (uint32_t)native.gpr[0]==1)r.c|=1u<<5;
 #endif
@@ -1110,7 +1285,7 @@ if(!pm_delay_quiet){
     log_text("OVMF.IRQ DE_config actual_hw4=");log_hex(hw4);log_text(" shadow4=");log_hex(shadow4);
     log_text(" host_edx=");log_hex(cpu.basic_edx);log_text(" fixed1=");log_hex(host.caps.cr4_fixed1);log_text(" all_MOVDR_failstop\n");
    }
-   if(!de_mode_write(cr==0?FCM_CR0:(cr==3?FCM_CR3:FCM_CR4),v,&n)||!commit_mode(&n))return false;
+   if(!de_mode_write(&mode,cr==0?FCM_CR0:(cr==3?FCM_CR3:FCM_CR4),v,&n)||!commit_mode(&n))return false;
    if(de_transition){uint64_t hw,shadow;if(!rd(0x6804,&hw)||!rd(0x6006,&shadow)||hw!=(v|0x2000)||shadow!=v)return mode_commit_failed();
     log_text("OVMF.IRQ DE_config readback_hw4=");log_hex(hw);log_text(" shadow4=");log_hex(shadow);log_text(" ISR=");log_hex(irq_session.owner.in_service);log_text(" pending=");log_hex(irq_session.owner.pending);log_text(" configuration_only\n");}
   }
@@ -1156,7 +1331,7 @@ if(!pm_delay_quiet){
    return false;
   }
   if(reason==31){native.gpr[0]=(uint32_t)mode.efer;native.gpr[3]=(uint32_t)(mode.efer>>32);}
-  else {struct fcm_state n;uint64_t v=(uint32_t)native.gpr[0]|((uint64_t)(uint32_t)native.gpr[3]<<32);if(!fcp_efer_allowed(v)||!de_mode_write(FCM_EFER,v,&n)||!commit_mode(&n))return false;}
+  else {struct fcm_state n;uint64_t v=(uint32_t)native.gpr[0]|((uint64_t)(uint32_t)native.gpr[3]<<32);if(!fcp_efer_allowed(v)||!de_mode_write(&mode,FCM_EFER,v,&n)||!commit_mode(&n))return false;}
  }else return false;
  if(!wr(0x681e,rip+len))return mode_commit_failed();
  return true;
@@ -1164,17 +1339,77 @@ if(!pm_delay_quiet){
 static uint64_t fmg_observed,fmg_reason;
 static bool fmg_io_failed;
 static int fmg_failed_step(unsigned);
+#ifdef SYLE_M2_DUAL_VCPU
+static bool prepare_parked_ap(void){
+ if(firmware_ap.page||!lvs_init(&firmware_ap.state))return false;
+#ifdef SYLE_M2_HOST_PARALLEL
+ if(!fmp_call(FMP_OPEN,0,0)){
+  log_text("FMG.HOST_AP_OPEN_FAILED stage=");log_hex(fmp.host.open_stage);log_text("\n");
+  return false;
+ }
+ firmware_ap.page=fmp.host.vmcs_page;
+ fmp_calibrate_tsc();
+ if(firmware_ap.page==host.vmcs_page||fmp.host.vmxon_page==host.vmxon_page||
+    fmp.host.host.tr_base==host.host.tr_base||fmp.host.host.idt_base==host.host.idt_base)fatal();
+ log_text("FMG.HOST_AP_OWNER vmcs=");log_hex(firmware_ap.page);
+ log_text(" vmxon=");log_hex(fmp.host.vmxon_page);
+ log_text(" ept=");log_hex(fmp.host.eptp);log_text("\n");
+#else
+ if(!lvn_bind(&firmware_ap.native,&firmware_ap.state_ops))return false;
+ uint64_t page=alloc(0);
+ if(!page)return false;
+ if(page==host.vmxon_page||page==host.vmcs_page||fwm_owned_page(&mem,page))fatal();
+ uint32_t *region=map(0,page);
+ unsigned bits=(host.basic&(1ull<<48))?32:host.caps.physical_bits;
+ if(!region||(page&4095)||(page>>bits)||!wb(0,page)){
+  if(!release(0,page))fatal();
+  return false;
+ }
+ for(unsigned i=0;i<1024;i++)region[i]=0;
+ region[0]=host.basic&0x7fffffff;
+ if(!ops.vmclear(ops.context,page))fatal();
+ firmware_ap.page=page;
+#endif
+ firmware_ap.mode.cr0=0x60000010;
+ guest_apic_init_mode(&firmware_ap.apic,0,false);
+ if(!ft100_mmio_init(&firmware_ap.timer,active_apic.epoch,active_apic.reference,clock_source.max_gap))return false;
+#ifdef SYLE_M2_HOST_PARALLEL
+ for(unsigned i=0;i<15;i++)firmware_ap.native.gpr[i]=fmp.host.plan.gpr[i];
+ return true;
+#else
+ if(!lvb_switch_current(&backend,host.vmcs_page,page))return false;
+ bool ok=fwh_program_reset(&host,(uintptr_t)(fallback_stack+sizeof fallback_stack),(uintptr_t)fallback);
+ for(unsigned i=0;i<15;i++)firmware_ap.native.gpr[i]=host.plan.gpr[i];
+ if(!lvb_switch_current(&backend,page,host.vmcs_page))fatal();
+ return ok;
+#endif
+}
+#endif
 static bool fmg_prepare_runtime(void){
 #ifdef SYLE_M2_NESTED
- nested_vmcs=(struct nvmx){.vmcs_region=NVMX_NONE,.current=NVMX_NONE,.physical_bits=32};
- nested_last_field=NVMX_NONE;
+ for(unsigned i=0;i<NESTED_L1_CPUS;i++){
+  struct nested_l1_context *ctx=&nested_contexts[i];
+  *ctx=(struct nested_l1_context){.vmcs={.vmcs_region=NVMX_NONE,.current=NVMX_NONE,.physical_bits=32},
+   .last_field=NVMX_NONE,.l1_mode=&mode,.l1_native=&native,.l1_state=&state,.l1_ops=&state_ops,
+   .l1_page=&host.vmcs_page,.debug=&disk_debug_bank};
+#ifdef SYLE_M2_DUAL_VCPU
+  if(i){ctx->l1_mode=&firmware_ap.mode;ctx->l1_native=&firmware_ap.native;
+   ctx->l1_state=&firmware_ap.state;ctx->l1_ops=&firmware_ap.state_ops;ctx->l1_page=&firmware_ap.page;ctx->debug=&firmware_ap.debug;}
+#endif
+ }
+ nested_current=nested_contexts;
 #endif
  if(!foc_init(&observation_trace,observation_bytes,sizeof observation_bytes,0,observation_sink))return false;
  log_text("OVMF.CACHE_KVM nondefault_single_maintenance_fixture\n");
  log_text("OVMF.CLOCK_APIC begin NONDEFAULT timer32 IRQ experiment; host-tested ownership, native delivery unverified\n");
  if(!lvn_bind(&native,&state_ops)){log_text("OVMF.CLOCK_APIC fail=native_bind\n");return false;}
  if(!lvs_init(&state)){log_text("OVMF.CLOCK_APIC fail=state_init\n");return false;}
+#ifdef SYLE_M2_HOST_PARALLEL
+ if(!lvb_bind_owned(&backend,&memory_ops,&ops,false)||!lvb_is_owner(&backend)||
+    backend.apic_id!=fmp.bsp_id)return false;
+#else
  if(!lvb_bind(&backend,&memory_ops,&ops)){log_text("OVMF.CLOCK_APIC fail=backend_bind\n");return false;}
+#endif
  if(!cpu_init()){log_text("OVMF.CLOCK_APIC fail=cpu_profile_host\n");return false;}
  lpic_init(&pic);
  if(!fag_init(&active_apic.device)||!clock_init()){log_text("OVMF.CLOCK_APIC source_admission_failed\n");return false;}
@@ -1197,9 +1432,14 @@ static bool fmg_prepare_runtime(void){
  log_text(" original=");log_hex(code_rom.original);log_text("\n");
 #endif
  if(!fcr_init(&cmos,&mem.layout,active_apic.epoch,active_apic.reference)){log_text("OVMF.CLOCK_APIC fail=cmos_memory_layout\n");return false;}
- if(!ffc_init(&fwcfg.stream,mem.layout.ram.size,1))return false;
  if(!enable())return false;
  if(!fwh_open(&host,&ops,&mem,(uint64_t)(uintptr_t)(fallback_stack+sizeof fallback_stack),(uint64_t)(uintptr_t)fallback))return false;
+ unsigned cpu_count=1;
+#ifdef SYLE_M2_DUAL_VCPU
+ if(!prepare_parked_ap())return false;
+ cpu_count++;
+#endif
+ if(!ffc_init(&fwcfg.stream,mem.layout.ram.size,cpu_count))return false;
 #ifdef SYLE_FIRMWARE_HALT
  uint64_t halt_misc;
  if(!ops.read_msr(ops.context,0x485,&halt_misc))return false;
@@ -1209,7 +1449,7 @@ static bool fmg_prepare_runtime(void){
 #endif
  uint64_t pin_controls;if(!rd(0x4000,&pin_controls)||!fag_host_events_exit(pin_controls))return false;
  log_text("OVMF.CLOCK_APIC host_external_nmi_exiting pin=");log_hex(pin_controls);log_text("\n");
- if(!ops.invept(ops.context,mem.eptp)||host.caps.timer_shift>24)return false;
+ if(!FW_SHARED_INVEPT()||host.caps.timer_shift>24)return false;
  for(unsigned i=0;i<15;i++)native.gpr[i]=host.plan.gpr[i];
  mode=(struct fcm_state){.cr0=0x60000010};
  if(!fdr_init(&debug_bank,host.vmcs_page,host.vmcs_page)||
@@ -1221,6 +1461,27 @@ static bool fmg_prepare_runtime(void){
 }
 static int fmg_run_entries(void){
  for(unsigned slice=0;slice<64;slice++){
+#ifdef SYLE_M2_DUAL_VCPU
+  if(firmware_ap.handoff&&!firmware_ap.initialized&&!firmware_ap.runnable){
+   uint64_t now;uint8_t v;
+   if(!linux_lapic_poll(&firmware_ap.apic,&now))return fmg_failed_step(__LINE__);
+   firmware_ap.runnable=firmware_ap.halt_if&&guest_apic_select(&firmware_ap.apic,&v);
+  }
+  bool pair_l1=false;
+#ifdef SYLE_M2_HOST_PARALLEL
+  pair_l1=firmware_ap.runnable&&firmware_ap.handoff&&disk_pic_active;
+#ifdef SYLE_M2_NESTED
+  pair_l1=pair_l1&&(!nested_enabled||(!nested_contexts[0].entry.suspended&&!nested_contexts[1].entry.suspended));
+#endif
+#endif
+  if(firmware_ap.runnable&&!pair_l1&&!firmware_ap_step(NULL))return fmg_failed_step(__LINE__);
+#endif
+#if defined(SYLE_M2_DUAL_VCPU) && defined(SYLE_M2_NESTED)
+  if(nested_enabled&&nested_current->entry.suspended){
+   if(!clock_sync()||!nested_resume_slice())return fmg_failed_step(__LINE__);
+   continue;
+  }
+#endif
   if(fmg_observed==UINT64_MAX)return fmg_failed_step(__LINE__);
 
   console_sample_quiet=irq_session.ready;
@@ -1240,6 +1501,14 @@ static int fmg_run_entries(void){
 #ifdef SYLE_FIRMWARE_DISK
   if(disk_pic_active&&!fmg_input()){log_text("OVMF.DISK input_before_reservation_failed\n");return fmg_failed_step(__LINE__);}
 #endif
+  bool pic_connected=true;
+  unsigned lapic_vector=0;
+#ifdef SYLE_M2_DUAL_VCPU
+  /* IMCR reset mode wires the 8259 directly to BSP INTR. In APIC mode
+   * the same physical line instead enters the BSP through LINT0. */
+  if(firmware_ap.handoff&&firmware_ap.imcr)pic_connected=(firmware_ap.bsp_linux.irq.svr&0x100)&&((firmware_ap.bsp_linux.lvt[3]&0x10700)==0x700);
+#endif
+  (void)pic_connected;
   uint64_t irq_attempt=0,window_attempt=0;bool staged=false,windowed=false;
 #ifdef SYLE_FIRMWARE_HALT
   bool halt_receipt=false;
@@ -1247,7 +1516,10 @@ static int fmg_run_entries(void){
 #ifdef SYLE_FIRMWARE_DISK
   if(disk_gp_pending()){if(!disk_gp_entry())return fmg_failed_step(__LINE__);}else
   if(disk_pic_active){
-   if(!disk_tick()||!disk_pic_before(&staged))return fmg_failed_step(__LINE__);
+#ifdef SYLE_M2_DUAL_VCPU
+   if(firmware_ap.handoff&&!disk_pic_window&&!linux_lapic_before(&firmware_ap.bsp_linux,&lapic_vector))return fmg_failed_step(__LINE__);
+#endif
+   if(!disk_tick()||(!lapic_vector&&pic_connected&&!disk_pic_before(&staged)))return fmg_failed_step(__LINE__);
   }else
 #endif
   if(irq_session.ready){
@@ -1268,7 +1540,11 @@ if(!pm_delay_quiet || gate!=FIW_WAIT || irq_session.owner.pending || irq_session
     staged=true;
    }
   }
-  if(!wr(0x482e,UINT64_C(1)<<(24-host.caps.timer_shift)))return fmg_failed_step(__LINE__);
+  uint64_t quantum=UINT64_C(1)<<24;
+#ifdef SYLE_M2_DUAL_VCPU
+  if(firmware_ap.handoff)quantum=UINT64_C(1)<<20;
+#endif
+  if(!wr(0x482e,quantum>>host.caps.timer_shift?quantum>>host.caps.timer_shift:1))return fmg_failed_step(__LINE__);
   if(!disk_pic_active&&irq_session.ready){
    uint64_t entry_info,error,length;
    if(!irq_identity()||!rd(0x4016,&entry_info)||!rd(0x4018,&error)||!rd(0x401a,&length)||
@@ -1288,19 +1564,35 @@ if(!pm_delay_quiet || gate!=FIW_WAIT || irq_session.owner.pending || irq_session
 #endif
 #endif
   native.entry_status=UINT32_MAX;
-  enum lvs_result result=lvs_run(&state,&state_ops);if(!safe())fatal();
+  enum lvs_result result;
+#ifdef SYLE_M2_HOST_PARALLEL
+  /* A staged BSP receipt must commit before an AP exit can enqueue a
+   * higher-priority IPI or touch the same device. */
+  const bool run_ap_after_receipt=pair_l1&&(staged||windowed||lapic_vector||
+      disk_pic_window||disk_gp_pending()||entered_halted);
+  if(pair_l1&&!run_ap_after_receipt){
+   if(!firmware_ap_step(&result))return fmg_failed_step(__LINE__);
+  }else
+#endif
+  result=lvs_run(&state,&state_ops);
+  if(!safe())fatal();
 #ifdef SYLE_M2_NESTED
   /* A register-only VMCS12 access with L1 interrupts disabled cannot
    * consume a PIC event. Share an empty PIC reservation across a bounded
    * burst. Every entry still saves/restores host state. Return the first
    * other exit, including interrupt-window and preemption, to normal dispatch. */
-  if(nested_enabled&&nested_vmcs.active&&disk_pic_active&&!staged&&!windowed&&
+  if(nested_enabled&&nested_current->vmcs.active&&disk_pic_active&&!lapic_vector&&!staged&&!windowed&&
      !disk_pic_window&&!disk_gp_pending()&&!entered_halted){
-   for(unsigned burst=0;burst<8&&slice<63&&result==LVS_EXIT&&native.entry_status==1;burst++){
-    uint64_t reason,info,rflags;
+   for(unsigned burst=0;burst<16&&slice<63&&result==LVS_EXIT&&native.entry_status==1;burst++){
+    uint64_t reason;
+#ifdef SYLE_M2_DUAL_VCPU
+    if(!rd(0x4402,&reason)||!linux_nested_register_exit(reason))break;
+#else
+    uint64_t info,rflags;
     if(!rd(0x4402,&reason)||(reason!=23&&reason!=25)||
        !rd(0x440e,&info)||!(info&(1u<<10))||
        !rd(0x6820,&rflags)||(rflags&0x200))break;
+#endif
     if(fmg_observed>=UINT64_MAX-1||!dispatch(reason))return fmg_failed_step(__LINE__);
     fmg_observed++;slice++;
     native.resume=1;native.entry_status=UINT32_MAX;
@@ -1319,7 +1611,13 @@ if(!pm_delay_quiet || gate!=FIW_WAIT || irq_session.owner.pending || irq_session
    if(!disk_gp_after(native.entry_status==1&&result==LVS_EXIT&&exit_fields&&safe(),(uint32_t)raw_reason,(uint32_t)raw_vector,(uint32_t)raw_interrupt))return fmg_failed_step(__LINE__);
   }else
   if(disk_pic_active){
-   if(!disk_pic_after(native.entry_status==1&&result==LVS_EXIT&&exit_fields&&safe()&&irq_identity(),(uint32_t)raw_reason,(uint32_t)(raw_vector&0x80000000?raw_vector:0),&halt_receipt))return fmg_failed_step(__LINE__);
+#ifdef SYLE_M2_DUAL_VCPU
+   if(lapic_vector){
+    if(!exit_fields||result!=LVS_EXIT||!linux_lapic_after(&firmware_ap.bsp_linux,lapic_vector,raw_reason,raw_vector))return fmg_failed_step(__LINE__);
+    staged=halt_receipt=true;
+   }else
+#endif
+   if(pic_connected&&!disk_pic_after(native.entry_status==1&&result==LVS_EXIT&&exit_fields&&safe()&&irq_identity(),(uint32_t)raw_reason,(uint32_t)(raw_vector&0x80000000?raw_vector:0),&halt_receipt))return fmg_failed_step(__LINE__);
   }else
 #endif
   if(staged){
@@ -1350,6 +1648,24 @@ if(!pm_delay_quiet || gate!=FIW_WAIT || irq_session.owner.pending || irq_session
   if(result!=LVS_EXIT||!exit_fields){log_text("OVMF.IRQ unproven_exit_stop\n");return fmg_failed_step(__LINE__);}
 #ifdef SYLE_FIRMWARE_HALT
   if(entered_halted&&!halt_after_entry(native.entry_status==1&&!state.host_dirty&&safe()&&irq_identity(),staged,halt_receipt))return fmg_failed_step(__LINE__);
+#endif
+#ifdef SYLE_M2_DUAL_VCPU
+  /* Receipts are settled. Finish a short HPET/TSC read sequence here
+   * even at the end of a management slice, before running the AP. */
+  if(firmware_ap.handoff&&disk_pic_active&&!windowed&&!disk_pic_window&&!disk_gp_pending()){
+   for(unsigned burst=0;burst<3&&linux_clock_read_exit(raw_reason);burst++){
+    if(fmg_observed>=UINT64_MAX-1||!dispatch(raw_reason))return fmg_failed_step(__LINE__);
+    fmg_observed++;slice++;
+    native.resume=1;native.entry_status=UINT32_MAX;
+    result=lvs_run(&state,&state_ops);
+    if(!safe())fatal();
+    if(result!=LVS_EXIT||native.entry_status!=1||!rd(0x4402,&raw_reason)||raw_reason>UINT32_MAX)
+     return fmg_failed_step(__LINE__);
+   }
+  }
+#endif
+#ifdef SYLE_M2_HOST_PARALLEL
+  if(run_ap_after_receipt&&!firmware_ap_step(NULL))return fmg_failed_step(__LINE__);
 #endif
   fmg_reason=raw_reason;
   if(!clock_sync())return fmg_failed_step(__LINE__);

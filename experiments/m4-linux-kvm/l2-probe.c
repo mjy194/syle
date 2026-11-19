@@ -1,9 +1,12 @@
 /* Single-vCPU guest-side acceptance probe. Run on x86-64 Linux. */
+#define _GNU_SOURCE
 #include <cpuid.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/kvm.h>
 #include <stdint.h>
+#include <inttypes.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,9 +23,49 @@ static int checked(int value, const char *operation)
     return value;
 }
 
+enum { concurrent_exits = 8, scratch_offset = 0x800 };
+
+/* The coordinator releases one KVM_RUN at a time per worker. Both workers
+ * have their VM and RAM mapped before either can enter L2. */
+static void exchange_byte(int fd, int sending)
+{
+    char token = 'x';
+    ssize_t size;
+    do {
+        size = sending ? write(fd, &token, 1) : read(fd, &token, 1);
+    } while (size < 0 && errno == EINTR);
+    if (size != 1 || token != 'x') {
+        fprintf(stderr, "L2 coordinator disconnected\n");
+        exit(1);
+    }
+}
+
+static int pin_cpu(int target)
+{
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(target, &mask);
+    if (sched_setaffinity(0, sizeof(mask), &mask) < 0) {
+        perror("sched_setaffinity");
+        return 0;
+    }
+    return sched_getcpu() == target;
+}
+
 int main(int argc, char **argv)
 {
-    int long_mode = argc == 2 && strcmp(argv[1], "--long-mode") == 0;
+    int concurrent = argc == 5 && strcmp(argv[1], "--interleave") == 0;
+    int migrate = argc == 2 && strcmp(argv[1], "--migrate") == 0;
+    int state_probe = concurrent || migrate;
+    int io_exits = migrate ? 2 : concurrent_exits;
+    int worker = concurrent ? atoi(argv[2]) : 0;
+    int start = concurrent ? atoi(argv[3]) : -1;
+    int done = concurrent ? atoi(argv[4]) : -1;
+    if (concurrent && (worker < 0 || worker > 1 || sched_getcpu() != worker))
+        return 1;
+    int long_mode = state_probe || (argc == 2 && strcmp(argv[1], "--long-mode") == 0);
+    if (migrate && !pin_cpu(0))
+        return 1;
     unsigned int a, b, c, d;
     setbuf(stdout, NULL);
     __cpuid(1, a, b, c, d);
@@ -51,8 +94,24 @@ int main(int argc, char **argv)
     const uint8_t code64[] = {0x49,0xb8,0x41,0,0,0,0x78,0x56,0x34,0x12,
                               0x4c,0x89,0xc0,0xe6,0xe9,0x49,0xff,0xc0,
                               0x4c,0x89,0xc0,0xe6,0xe9,0xf4};
+    /* r9 = [0x800] + r8; ++r8; [0x800] = r9; OUT r8b; LOOP; HLT. */
+    const uint8_t interleaved[] = {
+        0x4c,0x8b,0x0c,0x25,0x00,0x08,0x00,0x00, 0x4d,0x01,0xc1,
+        0x49,0xff,0xc0, 0x4c,0x89,0x0c,0x25,0x00,0x08,0x00,0x00,
+        0x44,0x89,0xc0, 0xe6,0xe9, 0xe2,0xe3, 0xf4
+    };
+    uint64_t *scratch = (uint64_t *)(ram + scratch_offset);
+    uint64_t expected_r8 = worker ? UINT64_C(0x9876543200000060) : UINT64_C(0x1234567800000040);
+    uint64_t cookie = expected_r8 ^ UINT64_C(0x2a98dde414f031da);
+    uint64_t expected_memory = ~cookie;
     if (long_mode) {
-        memcpy(ram, code64, sizeof(code64));
+        if (state_probe) {
+            memcpy(ram, interleaved, sizeof(interleaved));
+            scratch[0] = expected_memory;
+            scratch[1] = cookie;
+        } else {
+            memcpy(ram, code64, sizeof(code64));
+        }
         /* Four levels identity-map the code page at linear address zero. */
         for (unsigned level = 1; level <= 4; level++)
             *(uint64_t *)(ram + 4096 * level) = (level == 4 ? 0 : 4096 * (level + 1)) | 3;
@@ -94,7 +153,67 @@ int main(int argc, char **argv)
     }
     checked(ioctl(cpu, KVM_SET_SREGS, &sregs), "KVM_SET_SREGS");
     struct kvm_regs regs = {.rip = 0, .rflags = 2};
+    if (state_probe) {
+        regs.r8 = expected_r8;
+        regs.r10 = cookie;
+        regs.rcx = io_exits;
+    }
     checked(ioctl(cpu, KVM_SET_REGS, &regs), "KVM_SET_REGS");
+    if (state_probe) {
+        if (concurrent) {
+            printf("SMP_L2_READY cpu=%d api=%d vmx=%u\n", worker, version, (c >> 5) & 1);
+            exchange_byte(done, 1);
+        }
+        for (int step = 0; step <= io_exits; ++step) {
+            int target = migrate ? step % 2 : worker;
+            if (concurrent)
+                exchange_byte(start, 0);
+            if (migrate && !pin_cpu(target))
+                return 1;
+            if (sched_getcpu() != target)
+                return 1;
+            if (migrate)
+                printf("SMP_L2_MIGRATE_ENTER step=%d cpu=%d fd=%d\n", step, target, cpu);
+            int result;
+            do { result = ioctl(cpu, KVM_RUN, 0); } while (result < 0 && errno == EINTR);
+            checked(result, "KVM_RUN");
+            checked(ioctl(cpu, KVM_GET_REGS, &regs), "KVM_GET_REGS");
+            int hlt = step == io_exits;
+            if (!hlt) {
+                expected_memory += expected_r8++;
+                if (run->exit_reason != KVM_EXIT_IO || run->io.direction != KVM_EXIT_IO_OUT ||
+                    run->io.port != 0xe9 || run->io.size != 1 || run->io.count != 1 ||
+                    run->io.data_offset >= (unsigned)size ||
+                    ((uint8_t *)run)[run->io.data_offset] != (uint8_t)expected_r8)
+                    return 1;
+            } else if (run->exit_reason != KVM_EXIT_HLT) {
+                return 1;
+            }
+            /* KVM completes OUT and advances RIP on the next KVM_RUN. */
+            if (regs.r8 != expected_r8 || regs.r9 != expected_memory || regs.r10 != cookie ||
+                regs.rip != sizeof(interleaved) - (hlt ? 0 : 5) ||
+                regs.rcx != (unsigned)(io_exits - step) ||
+                scratch[0] != expected_memory || scratch[1] != cookie ||
+                sched_getcpu() != target) {
+                fprintf(stderr, "L2 state mismatch cpu=%d round=%d rip=%llx r8=%llx r9=%llx r10=%llx rcx=%llx mem=%" PRIx64 "\n",
+                        target, step, regs.rip, regs.r8, regs.r9, regs.r10, regs.rcx, scratch[0]);
+                return 1;
+            }
+            if (concurrent) {
+                printf("SMP_L2_EXIT cpu=%d round=%d exit=%s r8=%016" PRIx64 " mem=%016" PRIx64 "\n",
+                       target, step, hlt ? "HLT" : "IO", expected_r8, scratch[0]);
+                exchange_byte(done, 1);
+            } else {
+                printf("SMP_L2_MIGRATE_EXIT step=%d cpu=%d fd=%d exit=%s rip=%llx rcx=%llx "
+                       "r8=%016llx r9=%016llx r10=%016llx mem=%016" PRIx64 " sentinel=%016" PRIx64 "\n",
+                       step, target, cpu, hlt ? "HLT" : "IO", regs.rip, regs.rcx, regs.r8, regs.r9,
+                       regs.r10, scratch[0], scratch[1]);
+            }
+        }
+        if (migrate)
+            puts("SMP_L2_MIGRATE_PASS");
+        return 0;
+    }
     for (int step = 0; step < 3; ++step) {
         int result;
         do { result = ioctl(cpu, KVM_RUN, 0); } while (result < 0 && errno == EINTR);

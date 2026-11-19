@@ -8,7 +8,7 @@ build/fp-main.o: ../krnl/main.c | build
 build/fp-exceptions-asm.o: src/linux_exceptions.S firmware-probe.mk | build
 	$(CC) -g -fno-pie -DLINUX_GUEST_PROBE -c $< -o $@
 build/fp-native-asm.o: ../krnl/linux_vcpu_native.S | build
-	$(CC) -g -fno-pie -c $< -o $@
+	$(CC) -g -fno-pie $(FP_NATIVE_FLAGS) -c $< -o $@
 build/fp-rom/reset.bin: ../guest/firmware-probe/reset.S ../guest/firmware-probe/link.ld ../guest/firmware-probe/build.sh | build
 	sh ../guest/firmware-probe/build.sh "$(abspath build/fp-rom)"
 build/fp-rom.S: build/fp-rom/reset.bin

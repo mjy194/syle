@@ -6,7 +6,9 @@ static void select_item(struct ffc_state*s,uint16_t key){uint64_t v=0xaabbccdd12
 static uint8_t read_byte(struct ffc_state*s){uint64_t v=0x123456789abcdeffULL;assert(ffc_io(s,0x511,1,true,&v));assert((v&~255ULL)==0x123456789abcde00ULL);return (uint8_t)v;}
 static void reject(struct ffc_state*s,uint16_t port,unsigned width,bool input,uint64_t v){struct ffc_state old=*s;uint64_t saved=v;assert(!ffc_io(s,port,width,input,&v)&&!memcmp(s,&old,sizeof old)&&v==saved);}
 int main(void){
- struct ffc_state s={0};uint64_t v=0;assert(!ffc_init(&s,0,1)&&!ffc_init(&s,128u*1024u*1024u,0)&&!ffc_init(&s,128u*1024u*1024u,2)&&!s.ready);assert(!ffc_io(&s,0x511,1,true,&v));assert(ffc_init(&s,128u*1024u*1024u,1)&&!ffc_init(&s,128u*1024u*1024u,1)&&!ffc_init(0,128u*1024u*1024u,1));
+ struct ffc_state pair={0};assert(ffc_init(&pair,128u*1024u*1024u,2));
+ for(unsigned i=0;i<2;i++){select_item(&pair,i?15:5);assert(read_byte(&pair)==2&&read_byte(&pair)==0&&read_byte(&pair)==0);}
+ struct ffc_state s={0};uint64_t v=0;assert(!ffc_init(&s,0,1)&&!ffc_init(&s,128u*1024u*1024u,0)&&!ffc_init(&s,128u*1024u*1024u,3)&&!s.ready);assert(!ffc_io(&s,0x511,1,true,&v));assert(ffc_init(&s,128u*1024u*1024u,1)&&!ffc_init(&s,128u*1024u*1024u,1)&&!ffc_init(0,128u*1024u*1024u,1));
  assert(read_byte(&s)=='Q'&&read_byte(&s)=='E');select_item(&s,0);assert(read_byte(&s)=='Q');
  const uint16_t keys[]={0,1,3,5,0xf,0x19};
  const uint8_t expected[][8]={{'Q','E','M','U'},{1,0,0,0},{0,0,0,8,0,0,0,0},{1,0},{1,0},{0,0,0,0}};

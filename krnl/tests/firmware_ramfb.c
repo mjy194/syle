@@ -25,5 +25,20 @@ int main(void){
  descriptor(2,4,0x2000);f.selector=0;f.cursor=0;fail_write=true;assert(!trigger(&s,&f));fail_write=false;
  a=0;assert(frfb_io(&s,&f,0x514,4,true,&a,0,readmem,writemem,owned)&&a==0x554d4551);
  assert(!frfb_io(&s,&f,0x514,2,true,&a,0,readmem,writemem,owned));
+ struct ffc_state dual={0};assert(ffc_init(&dual,FWM_RAM_SIZE,2));s=(struct frfb_state){0};
+ descriptor((0x19u<<16)|10,196,0x3fc0);assert(trigger(&s,&dual));
+ assert(memory[0x3fc3]==3&&!memcmp(memory+0x3fc0+76,"etc/acpi/tables",15));
+ descriptor((0x21u<<16)|10,132,0x5000);assert(trigger(&s,&dual));
+ assert(memory[0x5000]==16&&memory[0x5008]==76);
+ const uint8_t *madt=memory+0x5010;unsigned sum=0;
+ for(unsigned i=0;i<60;i++)sum+=madt[i];
+ assert(!(sum&255)&&!memcmp(madt,"APIC",4)&&madt[4]==60);
+ assert(madt[48]==1&&madt[55]==1&&madt[56]==1);
+ const uint8_t *hpet=memory+0x5000+76;sum=0;
+ for(unsigned i=0;i<56;i++)sum+=hpet[i];
+ assert(!(sum&255)&&!memcmp(hpet,"HPET",4)&&hpet[4]==56&&hpet[46]==0xd0&&hpet[47]==0xfe);
+ descriptor((0x22u<<16)|10,384,0x6ff0);assert(trigger(&s,&dual));
+ assert(memory[0x6ff0]==1&&memory[0x7070]==2&&memory[0x7070+120]==8);
+ assert(memory[0x70f0]==2&&memory[0x70f0+116]==8&&memory[0x70f0+120]==8);
  puts("ramfb DMA: feature/directory/read/select/write config, BE, completion, bounds, overlap, invalid requests and partial write failure PASS");
 }

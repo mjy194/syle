@@ -11,6 +11,7 @@ struct fmm_memory {
  uint64_t cr0,cr3,cr4,efer,cs_base;
  uint32_t cs_ar;uint16_t cs_selector;
  bool advanced_ept_info; /* IA32_VMX_EPT_VPID_CAP bit22, captured by host opener. */
+ bool ap_startup_cache_state; /* Permit reset CD/NW while walking the AP startup mappings. */
 };
 enum fmm_access { FMM_READ,FMM_WRITE,FMM_EXEC };
 /* Physical32, CPL0, flat 64-bit CS, four-level paging only. 4K/2M pages;

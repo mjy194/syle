@@ -18,13 +18,13 @@ bool firmware_disk_bind(const void*p,size_t n){
  disk_bytes=p;disk_size=n;return true;
 }
 static bool disk_port(uint16_t p){return disk_state.bar&&!disk_state.probe&&(disk_state.command&1)&&p>=disk_state.bar&&(uint32_t)p-disk_state.bar<64;}
-static bool disk_dispatch(uint64_t rip,uint64_t q,unsigned len,bool config){
+static bool disk_cpu_io(uint64_t g[15],uint64_t rip,uint64_t q,unsigned len,bool config){
  uint8_t b[15];unsigned available=(unsigned)io_instruction_fetch(rip,b);
  unsigned size=q&7,width=size==3?4:size==1?2:1,port=(q>>16)&65535;
  bool input=(q&8)!=0;
- if(disk_state.failed||!irq_identity()||!observation_ok()||!fpp_encoding(q,len,b,available)||
-    (!(q&64)&&(uint16_t)native.gpr[3]!=port))return false;
- struct vrt next=disk_state;uint32_t value=(uint32_t)native.gpr[0];bool ok;
+ if(disk_state.failed||!observation_ok()||!fpp_encoding(q,len,b,available)||
+    (!(q&64)&&(uint16_t)g[3]!=port))return false;
+ struct vrt next=disk_state;uint32_t value=(uint32_t)g[0];bool ok;
  if(width<4)value&=(1u<<(width*8))-1;
  if(config){
   unsigned off=(pci.pci.address&252)+(port-0xcfc);
@@ -47,54 +47,64 @@ static bool disk_dispatch(uint64_t rip,uint64_t q,unsigned len,bool config){
 #ifdef SYLE_FIRMWARE_PERSISTENT
  if(!persistent_irq(vrwt_irq(&disk_state))){disk_state.failed=true;return false;}
 #endif
- if(input){uint64_t mask=width==4?UINT32_MAX:(UINT64_C(1)<<(width*8))-1;native.gpr[0]=width==4?value:(native.gpr[0]&~mask)|value;}
+ if(input){uint64_t mask=width==4?UINT32_MAX:(UINT64_C(1)<<(width*8))-1;g[0]=width==4?value:(g[0]&~mask)|value;}
  return true;
 }
 
+static bool disk_dispatch(uint64_t rip,uint64_t q,unsigned len,bool config){
+ return irq_identity()&&disk_cpu_io(native.gpr,rip,q,len,config);
+}
 static bool disk_clock_ready(void){return clock_source.sample&&clock_source.properties.verified&&clock_source.properties.invariant&&clock_source.properties.hz==10000000&&active_apic.epoch==clock_source.properties.epoch;}
 static struct lmc_state disk_microcode;
 static bool disk_read_field(void*x,uint32_t field,uint64_t*out){(void)x;return rd(field,out);}
 static bool disk_linux_msr_supported(uint32_t id){
  return id==0x3a||id==0x140||(id>=0x174&&id<=0x176)||id==0x8b||id==0xc0000100u||id==0xc0000101u||id==0xc0000102u||(id>=0xc0000081u&&id<=0xc0000084u);
 }
-static bool disk_gs_msr(uint64_t rip,unsigned reason,unsigned len){
+static bool disk_cpu_msr(uint64_t g[15],struct lvs_state *saved,struct lmc_state *microcode,uint64_t rip,unsigned reason,unsigned len){
  uint8_t bytes[15];size_t n=io_instruction_fetch(rip,bytes);uint64_t gs;
  if(len!=2||n<2||bytes[0]!=0x0f||bytes[1]!=(reason==31?0x32:0x30)||!rd(0x6810,&gs))return false;
- uint32_t id=(uint32_t)native.gpr[2];
- if(id==0xc0000101)return lgsc_apply(native.gpr,rip,gs,0,reason,len,0,pic_write);
- if(id==0x8b)return lmc_msr(&disk_microcode,native.gpr,rip,0,reason,len,0,pic_write);
+ uint32_t id=(uint32_t)g[2];
+ if(id==0xc0000101)return lgsc_apply(g,rip,gs,0,reason,len,0,pic_write);
+ if(id==0x8b)return lmc_msr(microcode,g,rip,0,reason,len,0,pic_write);
  struct fcp_result basic,ext;uint64_t fs;
  if(!fboot_query(&cpu,disk_clock_ready(),1,0,&basic)||!fboot_query(&cpu,disk_clock_ready(),0x80000001,0,&ext)||!rd(0x680e,&fs))return false;
- if(id>=0x174&&id<=0x176)return lse_apply(native.gpr,rip,0,reason,len,basic.d,ext.d,0,disk_read_field,0,pic_write);
+ if(id>=0x174&&id<=0x176)return lse_apply(g,rip,0,reason,len,basic.d,ext.d,0,disk_read_field,0,pic_write);
  if(id==0x3a||id==0x140){
   /* Feature-control is locked for the lifetime of this guest. */
-  if(basic.c||basic.a!=0x600||(id==0x3a&&reason!=31)||(reason==32&&((uint32_t)native.gpr[0]||(uint32_t)native.gpr[3])))return false;
+  if(basic.c||basic.a!=0x600||(id==0x3a&&reason!=31)||(reason==32&&((uint32_t)g[0]||(uint32_t)g[3])))return false;
   if(!pic_write(0,0x681e,rip+len))return false;
   if(reason==31){
-   native.gpr[0]=id==0x3a?1:0;
+   g[0]=id==0x3a?1:0;
 #ifdef SYLE_M2_NESTED
-   if(id==0x3a&&nested_enabled)native.gpr[0]|=4; /* Locked, VMX permitted outside SMX. */
+   if(id==0x3a&&nested_enabled)g[0]|=4; /* Locked, VMX permitted outside SMX. */
 #endif
-   native.gpr[3]=0;
+   g[3]=0;
   }
   return true;
  }
- return lmbr_apply(native.gpr,rip,0,reason,len,basic.d,ext.d,fs,&state,0,pic_write);
+ return lmbr_apply(g,rip,0,reason,len,basic.d,ext.d,fs,saved,0,pic_write);
+}
+static bool disk_gs_msr(uint64_t rip,unsigned reason,unsigned len){
+ return disk_cpu_msr(native.gpr,&state,&disk_microcode,rip,reason,len);
 }
 static bool disk_cr_encoding(uint64_t rip,uint64_t q,unsigned len){
  uint8_t bytes[15];size_t n=io_instruction_fetch(rip,bytes);return fboot_cr_encoding(q,len,bytes,n);
 }
-static bool disk_invlpg(uint64_t rip,uint64_t linear,unsigned len){
+static bool disk_cpu_invlpg(const uint64_t g[15],uint64_t rip,uint64_t linear,unsigned len){
  if(rip>UINT64_MAX-len||(((rip+len)>>47)!=0&&((rip+len)>>47)!=0x1ffff))return false;
  uint8_t bytes[15];size_t n=io_instruction_fetch(rip,bytes);uint64_t regs[16],primary,secondary,rsp,eptp;
  static const unsigned rm[16]={0,2,3,1,15,6,4,5,7,8,9,10,11,12,13,14};
- if(!irq_identity()||!rd(0x681c,&rsp)||!rd(0x4002,&primary)||!(primary&0x200)||
+ if(!rd(0x681c,&rsp)||!rd(0x4002,&primary)||!(primary&0x200)||
     !rd(0x401e,&secondary)||secondary!=0xc2||!rd(0x201a,&eptp)||eptp!=mem.eptp)return false;
- for(unsigned i=0;i<16;i++)regs[i]=i==4?rsp:native.gpr[rm[i]];
- if(!fbinv_decode(bytes,n,len,regs,linear)||!ops.invept(ops.context,mem.eptp))return false;
+ for(unsigned i=0;i<16;i++)regs[i]=i==4?rsp:g[rm[i]];
+ if(!fbinv_decode(bytes,n,len,regs,linear)||!FW_SHARED_INVEPT())return false;
  /* VPID disabled: next entry invalidates guest linear/combined caches. Never
   * issue native INVLPG against the operand in the host address space. */
  return pic_write(0,0x681e,rip+len);
+}
+
+static bool disk_invlpg(uint64_t rip,uint64_t linear,unsigned len){
+ return irq_identity()&&disk_cpu_invlpg(native.gpr,rip,linear,len);
 }
 
 static struct lpit2 disk_pit2;static bool disk_pit2_ready;
@@ -140,6 +150,9 @@ static bool disk_tick(void){
 }
 static bool disk_legacy_init(void){
  if(disk_legacy_ready||!lpd_init(&disk_legacy,(uint64_t)(uintptr_t)&disk_legacy))return false;
+#ifdef SYLE_M2_DUAL_VCPU
+ disk_legacy.replay_periodic=true;
+#endif
  disk_legacy_ready=true;return disk_tick();
 }
 static bool disk_pic_route(void){
@@ -168,6 +181,16 @@ static bool disk_pic_entry_ok(uint64_t flags){
  !irq_window.armed&&lpd_entry_ok(&disk_legacy,flags);
 }
 static struct lp80_state disk_post;
+static bool disk_uart_io(uint64_t g[15],uint64_t rip,uint64_t q,unsigned len){
+  unsigned p=q>>16;
+  bool read_rx=(q&8)&&p==0x3f8&&!(disk_legacy.uart.uart.lcr&128)&&disk_legacy.uart.uart.rc;
+  if(!lpd_uart_io(&disk_legacy,g,rip,q,len,0,irq_write))return false;
+  if(read_rx)disk_rx_read++;
+  bool available;uint8_t byte;
+  if(!lpd_recv(&disk_legacy,&available,&byte))return false;
+  if(available){if(console_count==sizeof console_output)console_count=0;console_output[console_count++]=byte;console_live_byte(byte);}
+  return true;
+}
 static bool disk_legacy_io(uint64_t rip,uint64_t q,unsigned len,uint64_t flags){
  uint8_t b[15];size_t n=io_instruction_fetch(rip,b);unsigned p=q>>16;
  if(!fpp_encoding(q,len,b,n)||!irq_identity()||!clock_sync()||!disk_tick())return false;
@@ -179,13 +202,7 @@ static bool disk_legacy_io(uint64_t rip,uint64_t q,unsigned len,uint64_t flags){
   return true;
  }
  if(p>=0x3f8&&p<=0x3ff){
-  bool read_rx=(q&8)&&p==0x3f8&&!(disk_legacy.uart.uart.lcr&128)&&disk_legacy.uart.uart.rc;
-  if(!lpd_uart_io(&disk_legacy,native.gpr,rip,q,len,0,irq_write))return false;
-  if(read_rx)disk_rx_read++;
-  bool available;uint8_t byte;
-  if(!lpd_recv(&disk_legacy,&available,&byte))return false;
-  if(available){if(console_count==sizeof console_output)console_count=0;console_output[console_count++]=byte;console_live_byte(byte);}
-  return true;
+  return disk_uart_io(native.gpr,rip,q,len);
  }
  if(p==0x40||p==0x43)return lpd_pit_io(&disk_legacy,native.gpr,rip,q,len,disk_legacy.timer.tick,0,irq_write);
  if(!disk_pic_active&&(!(q&8)&&p==0x20&&(uint8_t)native.gpr[0]==0x11)&&!disk_pic_route())return false;
